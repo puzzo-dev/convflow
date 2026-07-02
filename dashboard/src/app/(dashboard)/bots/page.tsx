@@ -24,6 +24,10 @@ export default function BotsPage() {
   const { data, isLoading, mutate } = useSWR('/platform/bots', fetcher);
   const bots: BotItem[] = data?.bots ?? [];
 
+  // Only org owners/admins can create bots.
+  const { data: orgData } = useSWR('/platform/org', fetcher);
+  const canCreate = ['owner', 'admin'].includes(orgData?.role);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -50,10 +54,12 @@ export default function BotsPage() {
           <h1 className="text-3xl font-bold">My Bots</h1>
           <p className="text-secondary mt-2">Manage all your WhatsApp bot instances.</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary flex items-center gap-2">
-          <Plus size={17} />
-          Create New Bot
-        </button>
+        {canCreate && (
+          <button onClick={() => setShowModal(true)} className="btn btn-primary flex items-center gap-2">
+            <Plus size={17} />
+            Create New Bot
+          </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -64,10 +70,14 @@ export default function BotsPage() {
         <div className="glass-panel p-16 text-center">
           <Bot size={48} className="text-muted mx-auto mb-5" />
           <h2 className="text-xl font-semibold mb-2">No bots yet</h2>
-          <p className="text-secondary mb-6 text-sm">Create your first bot to get started</p>
-          <button onClick={() => setShowModal(true)} className="btn btn-primary">
-            <Plus size={16} /> Create Bot
-          </button>
+          <p className="text-secondary mb-6 text-sm">
+            {canCreate ? 'Create your first bot to get started' : 'No bots have been created for your organization yet.'}
+          </p>
+          {canCreate && (
+            <button onClick={() => setShowModal(true)} className="btn btn-primary">
+              <Plus size={16} /> Create Bot
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
