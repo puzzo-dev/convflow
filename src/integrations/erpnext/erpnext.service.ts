@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import crypto from 'crypto';
-import { validateExternalUrl } from '../../lib/validate-url';
+import { validateExternalUrlAsync } from '../../lib/validate-url';
 import { AnswerMap, CreateOrderTerminal, ERPNextFieldMap } from '../../types';
 
 interface ConnectERPNextPayload {
@@ -14,15 +14,15 @@ interface ConnectERPNextPayload {
   apiSecret: string;
 }
 
-function assertErpnextUrl(url: string): string {
-  const result = validateExternalUrl(url);
+async function assertErpnextUrl(url: string): Promise<string> {
+  const result = await validateExternalUrlAsync(url);
   if (!result.valid) throw new Error(result.reason);
   return result.origin;
 }
 
 export async function connectERPNext(payload: ConnectERPNextPayload): Promise<void> {
   const { companySlug, sessionId, erpnextUrl, apiKey, apiSecret, openwaApiKey } = payload;
-  const baseURL = assertErpnextUrl(erpnextUrl);
+  const baseURL = await assertErpnextUrl(erpnextUrl);
   const authHeader = `token ${apiKey}:${apiSecret}`;
   const client = axios.create({
     baseURL,
@@ -88,7 +88,7 @@ export async function pushLeadToERPNext(
   });
   if (!conn) return; // Not connected — skip silently
 
-  const baseURL = assertErpnextUrl(conn.erpnextUrl);
+  const baseURL = await assertErpnextUrl(conn.erpnextUrl);
   const authHeader = `token ${conn.apiKey}:${conn.apiSecret}`;
 
   // Build human-readable notes from answers
@@ -149,7 +149,7 @@ export async function createSalesOrderInERPNext(
     return;
   }
 
-  const baseURL = assertErpnextUrl(conn.erpnextUrl);
+  const baseURL = await assertErpnextUrl(conn.erpnextUrl);
   const authHeader = `token ${conn.apiKey}:${conn.apiSecret}`;
 
   // Resolve or create customer by phone

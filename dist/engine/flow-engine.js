@@ -1,6 +1,7 @@
 import { getState, setState, clearState, getItemsFromCache } from '../store/redis';
 import { sendMessage, sendImage } from '../channels/openwa.channel';
 import { runTerminal, interpolate } from './terminal-runner';
+import { runNodeActions, runEntryActions } from './node-actions';
 import { logConversation } from '../store/conversations';
 import { notifyOwner } from '../notifications/notifier';
 import { prisma } from '../store/prisma';
@@ -58,6 +59,10 @@ export async function handleInbound(phone, rawText, profileName, company) {
         await triggerHumanTakeover(phone, text, state, company);
         return;
     }
+    // Fire this node's actions now that its answer is accepted. Blocking actions
+    // (or any that capture a response) mutate state.answers in place; the setState
+    // below persists them before we advance.
+    await runNodeActions(currentStage, state, phone, company);
     const nextStageIndex = resolveNextStage(currentStage, state);
     if (nextStageIndex >= company.flows.length) {
         console.error(`[${company.slug}] nextStageIndex out of bounds`);
@@ -112,6 +117,7 @@ async function deliverStage(stage, state, phone, company, depth = 0) {
     }
     // Branch stages are silent routing nodes — auto-resolve without waiting for new user input.
     if (stage.type === 'branch') {
+        await runEntryActions(stage, state, phone, company);
         const nextIdx = resolveNextStage(stage, state);
         const nextStage = company.flows[nextIdx];
         if (nextStage) {
@@ -122,6 +128,7 @@ async function deliverStage(stage, state, phone, company, depth = 0) {
         return;
     }
     if (stage.type === 'message') {
+        await runEntryActions(stage, state, phone, company);
         const next = company.flows[stage.stage + 1];
         if (next) {
             state.stage = next.stage;
@@ -134,6 +141,7 @@ async function deliverStage(stage, state, phone, company, depth = 0) {
         if (stage.mediaUrl) {
             await sendImage(company, phone, stage.mediaUrl);
         }
+        await runEntryActions(stage, state, phone, company);
         const next = company.flows[stage.stage + 1];
         if (next) {
             state.stage = next.stage;
@@ -214,9 +222,14 @@ function processAnswer(text, stage, state) {
     return false;
 }
 function resolveNextStage(stage, state) {
-    if (stage.type === 'branch' && stage.branches) {
+    // Any stage carrying a branch map routes per answer value → stage index.
+    // This covers both silent `branch` routers and edge-routed `select` nodes
+    // (each option's outgoing edge compiles into this map at save time).
+    if (stage.branches && stage.answerKey) {
         const answer = state.answers[stage.answerKey];
-        return stage.branches[answer] ?? stage.stage + 1;
+        if (answer !== undefined && stage.branches[answer] !== undefined) {
+            return stage.branches[answer];
+        }
     }
     if (stage.type === 'confirm') {
         const answer = state.answers[stage.answerKey];

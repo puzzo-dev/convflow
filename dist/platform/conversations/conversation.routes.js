@@ -2,6 +2,10 @@ import { prisma } from '../../store/prisma';
 import { requireAuth, requireBotAccess, requireBotRole } from '../auth/auth.middleware';
 import { getState, setState } from '../../store/redis';
 import { sendMessage } from '../../channels/openwa.channel';
+const PHONE_RE = /^\d{7,15}$/;
+function normalizePhone(raw) {
+    return (raw ?? '').replace(/\D/g, '');
+}
 export default async function conversationRoutes(app) {
     // ─────────────────────────────────────────────────────────────────────────────
     // GET /platform/bots/:slug/conversations — recent phones + optional human-mode filter
@@ -55,7 +59,11 @@ export default async function conversationRoutes(app) {
     // and re-sends the last bot prompt to the customer
     // ─────────────────────────────────────────────────────────────────────────────
     app.post('/platform/bots/:slug/conversations/:phone/resume', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
-        const { slug, phone } = req.params;
+        const { slug } = req.params;
+        const phone = normalizePhone(req.params.phone);
+        if (!PHONE_RE.test(phone)) {
+            return reply.status(400).send({ error: 'Invalid phone number' });
+        }
         // Mark takeover as resolved in DB
         const takeover = await prisma.humanTakeover.findFirst({
             where: { companySlug: slug, phone, resumedAt: null },

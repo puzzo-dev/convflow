@@ -1,4 +1,4 @@
-import { guardedFetch } from '../engine/webhook-util';
+import { guardedFetch, getUrlTemplateOrigin } from '../engine/webhook-util';
 import { getPlugin } from './registry';
 import { resolveCreds } from './credentials';
 import { InterpCtx } from './types';
@@ -7,18 +7,26 @@ import { ConvState, CompanyConfig } from '../types';
 // Template interpolation: {creds.x}, {input.x}, {answers.x} (label-preferred),
 // {name}, {phone}.
 export function interpolateTemplate(tpl: string, ctx: InterpCtx): string {
-  return tpl.replace(/\{([^}]+)\}/g, (_, expr) => {
-    if (expr === 'name')  return ctx.name ?? '';
-    if (expr === 'phone') return ctx.phone ?? '';
-    const dot = expr.indexOf('.');
-    if (dot === -1) return '';
-    const ns  = expr.slice(0, dot);
-    const key = expr.slice(dot + 1);
-    if (ns === 'creds')   return ctx.creds[key] ?? '';
-    if (ns === 'input')   return String(ctx.input[key] ?? '');
-    if (ns === 'answers') return ctx.answers[`${key}_label`] ?? ctx.answers[key] ?? '';
-    return '';
-  });
+  return tpl.replace(/\{([^}]+)\}/g, (_, expr) => resolveExpr(expr, ctx));
+}
+
+function resolveExpr(expr: string, ctx: InterpCtx): string {
+  if (expr === 'name')  return ctx.name ?? '';
+  if (expr === 'phone') return ctx.phone ?? '';
+  const dot = expr.indexOf('.');
+  if (dot === -1) return '';
+  const ns  = expr.slice(0, dot);
+  const key = expr.slice(dot + 1);
+  if (ns === 'creds')   return ctx.creds[key] ?? '';
+  if (ns === 'input')   return String(ctx.input[key] ?? '');
+  if (ns === 'answers') return ctx.answers[`${key}_label`] ?? ctx.answers[key] ?? '';
+  return '';
+}
+
+// URL-safe variant: encodes every substituted value so user answers cannot change
+// the origin, path, or query structure of the configured plugin URL.
+function interpolateUrlTemplate(tpl: string, ctx: InterpCtx): string {
+  return tpl.replace(/\{([^}]+)\}/g, (_, expr) => encodeURIComponent(resolveExpr(expr, ctx)));
 }
 
 function interpHeaders(headers: Record<string, string> | undefined, ctx: InterpCtx): Record<string, string> {
@@ -58,8 +66,9 @@ export async function runPluginAction(
   const creds = await resolveCreds(manifest, company.slug);
   const ctx: InterpCtx = { creds, input: action.inputs ?? {}, answers: state.answers, name: state.name, phone };
 
-  const url     = interpolateTemplate(def.url, ctx);
-  const headers = { 'Content-Type': 'application/json', ...interpHeaders(def.headers, ctx) };
+  const allowedOrigin = getUrlTemplateOrigin(def.url);
+  const url           = interpolateUrlTemplate(def.url, ctx);
+  const headers       = { 'Content-Type': 'application/json', ...interpHeaders(def.headers, ctx) };
 
   let body: string | undefined;
   if (def.bodyFrom === 'fields') {
@@ -70,7 +79,7 @@ export async function runPluginAction(
     body = JSON.stringify(mapped);
   }
 
-  const res = await guardedFetch(url, { method: def.verb, headers, body });
+  const res = await guardedFetch(url, { method: def.verb, headers, body }, allowedOrigin);
   if (!res.ok) throw new Error(`${def.verb} ${url} → ${res.status}`);
 
   if (action.saveResponseTo) {
@@ -95,10 +104,12 @@ export async function resolvePluginOptions(
   const creds = await resolveCreds(manifest, companySlug);
   const ctx: InterpCtx = { creds, input: {}, answers: {}, name: null, phone: '' };
 
-  const res = await guardedFetch(interpolateTemplate(def.url, ctx), {
+  const allowedOrigin = getUrlTemplateOrigin(def.url);
+  const url           = interpolateUrlTemplate(def.url, ctx);
+  const res = await guardedFetch(url, {
     method: def.verb,
     headers: interpHeaders(def.headers, ctx),
-  });
+  }, allowedOrigin);
   if (!res.ok) throw new Error(`Option fetch failed: ${res.status}`);
 
   const json  = await res.json().catch(() => null);

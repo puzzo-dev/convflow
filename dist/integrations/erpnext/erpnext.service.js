@@ -2,11 +2,19 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import crypto from 'crypto';
+import { validateExternalUrlAsync } from '../../lib/validate-url';
+async function assertErpnextUrl(url) {
+    const result = await validateExternalUrlAsync(url);
+    if (!result.valid)
+        throw new Error(result.reason);
+    return result.origin;
+}
 export async function connectERPNext(payload) {
     const { companySlug, sessionId, erpnextUrl, apiKey, apiSecret, openwaApiKey } = payload;
+    const baseURL = await assertErpnextUrl(erpnextUrl);
     const authHeader = `token ${apiKey}:${apiSecret}`;
     const client = axios.create({
-        baseURL: erpnextUrl,
+        baseURL,
         headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
         timeout: 15_000,
     });
@@ -56,6 +64,7 @@ export async function pushLeadToERPNext(companySlug, phone, name, answers, score
     });
     if (!conn)
         return; // Not connected — skip silently
+    const baseURL = await assertErpnextUrl(conn.erpnextUrl);
     const authHeader = `token ${conn.apiKey}:${conn.apiSecret}`;
     // Build human-readable notes from answers
     const notes = Object.entries(answers)
@@ -74,7 +83,7 @@ export async function pushLeadToERPNext(companySlug, phone, name, answers, score
         custom_convflow_slug: companySlug,
     };
     try {
-        await axios.post(`${conn.erpnextUrl}/api/resource/Lead`, leadPayload, {
+        await axios.post(`${baseURL}/api/resource/Lead`, leadPayload, {
             headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
             timeout: 10_000,
         });
@@ -101,9 +110,10 @@ export async function createSalesOrderInERPNext(companySlug, phone, name, answer
         console.info(`[${companySlug}] ERPNext not connected — order not pushed`);
         return;
     }
+    const baseURL = await assertErpnextUrl(conn.erpnextUrl);
     const authHeader = `token ${conn.apiKey}:${conn.apiSecret}`;
     // Resolve or create customer by phone
-    const customerName = await resolveOrCreateCustomer(conn.erpnextUrl, authHeader, phone, name);
+    const customerName = await resolveOrCreateCustomer(baseURL, authHeader, phone, name);
     // Build item line from answers
     const itemName = answers[terminal.itemAnswerKey] ?? 'Unknown Item';
     const itemCode = terminal.itemCodeAnswerKey
@@ -137,7 +147,7 @@ export async function createSalesOrderInERPNext(companySlug, phone, name, answer
         ...extraFields,
     };
     try {
-        const res = await axios.post(`${conn.erpnextUrl}/api/resource/Sales Order`, orderPayload, { headers: { Authorization: authHeader, 'Content-Type': 'application/json' }, timeout: 15_000 });
+        const res = await axios.post(`${baseURL}/api/resource/Sales Order`, orderPayload, { headers: { Authorization: authHeader, 'Content-Type': 'application/json' }, timeout: 15_000 });
         await prisma.erpnextConnection.update({
             where: { companySlug },
             data: { lastSyncAt: new Date() },
@@ -152,11 +162,11 @@ export async function createSalesOrderInERPNext(companySlug, phone, name, answer
         });
     }
 }
-async function resolveOrCreateCustomer(erpnextUrl, authHeader, phone, name) {
+async function resolveOrCreateCustomer(baseURL, authHeader, phone, name) {
     const normalizedPhone = `+${phone}`;
     // Try to find existing customer by phone
     try {
-        const res = await axios.get(`${erpnextUrl}/api/resource/Customer`, {
+        const res = await axios.get(`${baseURL}/api/resource/Customer`, {
             params: { filters: JSON.stringify([['mobile_no', '=', normalizedPhone]]), fields: '["name"]', limit: 1 },
             headers: { Authorization: authHeader },
             timeout: 10_000,
@@ -167,7 +177,7 @@ async function resolveOrCreateCustomer(erpnextUrl, authHeader, phone, name) {
     catch { /* not found — create */ }
     // Create new customer
     const customerName = name ?? `WhatsApp ${normalizedPhone}`;
-    await axios.post(`${erpnextUrl}/api/resource/Customer`, {
+    await axios.post(`${baseURL}/api/resource/Customer`, {
         customer_name: customerName,
         customer_type: 'Individual',
         customer_group: 'Individual',

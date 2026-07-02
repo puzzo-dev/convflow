@@ -3,8 +3,9 @@ import { requireAuth, requireBotAccess, requireBotRole } from '../auth/auth.midd
 import { refreshTenantCache } from '../../engine/tenant-router';
 import axios from 'axios';
 import crypto from 'crypto';
+import { OPENWA_BASE_URL, sanitizeSessionId } from '../../channels/openwa.channel';
 const openwaClient = () => axios.create({
-    baseURL: process.env.OPENWA_BASE_URL ?? 'http://localhost:2785/api',
+    baseURL: OPENWA_BASE_URL,
     headers: { 'X-API-Key': process.env.OPENWA_API_KEY ?? '' },
     timeout: 10_000,
 });
@@ -112,27 +113,14 @@ export default async function botRoutes(app) {
         if (!tenant)
             return reply.status(404).send({ error: 'Bot not found' });
         try {
-            const res = await openwaClient().get(`/sessions/${tenant.openwaSessionId}/qr`);
+            const sessionId = sanitizeSessionId(tenant.openwaSessionId);
+            const res = await openwaClient().get(`/sessions/${sessionId}/qr`);
             const data = res.data;
             const qrImage = data.qrCode ?? data.qrImage ?? data.qr ?? data.base64 ?? null;
             reply.send({ status: data.status ?? 'STARTING', qrImage, phone: data.me?.user ?? null });
         }
         catch {
             reply.send({ status: 'STARTING', qrImage: null });
-        }
-    });
-    // GET /platform/bots/:slug/status
-    app.get('/platform/bots/:slug/status', { preHandler: [requireAuth, requireBotAccess] }, async (req, reply) => {
-        const { slug } = req.params;
-        const tenant = await prisma.tenant.findUnique({ where: { slug } });
-        if (!tenant)
-            return reply.status(404).send({ error: 'Bot not found' });
-        try {
-            const res = await openwaClient().get(`/sessions/${tenant.openwaSessionId}/status`);
-            reply.send(res.data);
-        }
-        catch {
-            reply.send({ status: 'UNKNOWN' });
         }
     });
     // POST /platform/bots/:slug/reconnect
@@ -142,7 +130,8 @@ export default async function botRoutes(app) {
         if (!tenant)
             return reply.status(404).send({ error: 'Bot not found' });
         try {
-            await openwaClient().post(`/sessions/${tenant.openwaSessionId}/restart`);
+            const sessionId = sanitizeSessionId(tenant.openwaSessionId);
+            await openwaClient().post(`/sessions/${sessionId}/restart`);
             reply.send({ restarted: true, qrPollUrl: `/platform/bots/${slug}/qr` });
         }
         catch (err) {

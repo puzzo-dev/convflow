@@ -1,5 +1,5 @@
 import { ConvState, CompanyConfig, FlowStage, NodeAction, HttpRequestAction, NotifyOwnerAction } from '../types';
-import { guardedFetch } from './webhook-util';
+import { guardedFetch, getUrlTemplateOrigin } from './webhook-util';
 import { notifyOwner } from '../notifications/notifier';
 import { notify } from '../notifications/notify.service';
 import { runPluginAction } from '../plugins/runner';
@@ -61,6 +61,17 @@ function interp(template: string, state: ConvState, phone: string): string {
     .replace(/\{answers\.([^}]+)\}/g, (_, key) => state.answers[`${key}_label`] ?? state.answers[key] ?? '');
 }
 
+// URL-safe interpolation: encode user-controlled tokens so they cannot escape the
+// intended origin, path, or query parameter.
+function interpUrl(template: string, state: ConvState, phone: string): string {
+  return template
+    .replace(/\{name\}/g, encodeURIComponent(state.name ?? ''))
+    .replace(/\{phone\}/g, encodeURIComponent(phone))
+    .replace(/\{answers\.([^}]+)\}/g, (_, key) =>
+      encodeURIComponent(state.answers[`${key}_label`] ?? state.answers[key] ?? ''),
+    );
+}
+
 function pluck(obj: any, path: string): unknown {
   return path.split('.').reduce((acc, k) => (acc == null ? undefined : acc[k]), obj);
 }
@@ -72,7 +83,10 @@ async function runHttpRequest(
   company: CompanyConfig,
 ): Promise<void> {
   const method = action.method ?? 'POST';
-  const url    = interp(action.url, state, phone);
+  // Lock the origin to whatever the tenant admin configured; user answers can only
+  // fill path/query segments and are URL-encoded so they cannot escape the host.
+  const allowedOrigin = getUrlTemplateOrigin(action.url);
+  const url           = interpUrl(action.url, state, phone);
 
   // Custom body (token-interpolated values) or the standard lead payload.
   let body: string | undefined;
@@ -87,7 +101,7 @@ async function runHttpRequest(
     method,
     headers: { 'Content-Type': 'application/json', ...(action.headers ?? {}) },
     body,
-  });
+  }, allowedOrigin);
   if (!res.ok) throw new Error(`${method} ${url} responded ${res.status}`);
 
   // Optionally capture part of the response back into the conversation answers.

@@ -15,9 +15,25 @@ export function validateWebhookUrl(raw: string): URL {
   return url;
 }
 
+// Extract the locked origin from a URL template that may contain {token} placeholders.
+// Placeholders are stripped before parsing; if a placeholder is in the host the URL
+// becomes invalid, which prevents tenants from making the origin user-controlled.
+export function getUrlTemplateOrigin(template: string): string {
+  const normalized = template.replace(/\{[^}]+\}/g, '');
+  return validateWebhookUrl(normalized).origin;
+}
+
 // fetch() with an AbortController timeout. Validates the URL for SSRF first.
-export async function guardedFetch(rawUrl: string, init: RequestInit): Promise<Response> {
-  validateWebhookUrl(rawUrl);
+// If allowedOrigin is supplied, the parsed URL must match it exactly.
+export async function guardedFetch(
+  rawUrl: string,
+  init: RequestInit,
+  allowedOrigin?: string,
+): Promise<Response> {
+  const url = validateWebhookUrl(rawUrl);
+  if (allowedOrigin && url.origin !== allowedOrigin) {
+    throw new Error(`URL origin mismatch: expected ${allowedOrigin}, got ${url.origin}`);
+  }
   const ac    = new AbortController();
   const timer = setTimeout(() => ac.abort(), OUTBOUND_TIMEOUT_MS);
   try {

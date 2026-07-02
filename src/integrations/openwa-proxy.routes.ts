@@ -3,7 +3,7 @@
 
 import { FastifyInstance } from 'fastify';
 import crypto from 'crypto';
-import { sendMessage } from '../channels/openwa.channel';
+import { sendMessage, sanitizeSessionId, validateOpenwaUrl } from '../channels/openwa.channel';
 import { getCompanyBySessionId } from '../engine/tenant-router';
 
 export default async function openwaProxyRoutes(app: FastifyInstance) {
@@ -12,8 +12,21 @@ export default async function openwaProxyRoutes(app: FastifyInstance) {
     const { sessionId } = req.params as any;
     const body          = req.body as any;
 
-    const company = getCompanyBySessionId(sessionId);
+    let safeSessionId: string;
+    try {
+      safeSessionId = sanitizeSessionId(sessionId);
+    } catch {
+      return reply.status(400).send({ error: 'Invalid session id' });
+    }
+
+    const company = getCompanyBySessionId(safeSessionId);
     if (!company) return reply.status(404).send({ error: 'Session not found' });
+
+    try {
+      validateOpenwaUrl(company.openwaBaseUrl);
+    } catch {
+      return reply.status(500).send({ error: 'Invalid OpenWA base URL configured for this bot' });
+    }
 
     const expectedSecret = company.erpnextProxySecret;
     if (!expectedSecret) {
@@ -28,8 +41,10 @@ export default async function openwaProxyRoutes(app: FastifyInstance) {
       return reply.status(401).send({ error: 'Invalid webhook secret' });
     }
 
-    const phone = (body.to as string)?.replace(/\D/g, '');
-    const text  = body.message ?? body.text;
+    const rawPhone = typeof body.to === 'string' ? body.to : '';
+    const phone    = rawPhone.replace(/\D/g, '');
+    const text     = (typeof body.message === 'string' && body.message) ||
+                     (typeof body.text === 'string' && body.text) || '';
 
     if (!phone || !text) return reply.status(400).send({ error: 'Missing to or message' });
 

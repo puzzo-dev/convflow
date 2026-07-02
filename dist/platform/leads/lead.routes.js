@@ -18,6 +18,11 @@ export default async function leadRoutes(app) {
         if (classification) {
             where.classification = classification;
         }
+        else {
+            // Default CRM view excludes completed orders — they have a dedicated
+            // "Orders" filter and are counted separately in analytics.
+            where.classification = { not: 'order' };
+        }
         const [leads, total] = await Promise.all([
             prisma.lead.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit }),
             prisma.lead.count({ where }),

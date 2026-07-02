@@ -4,7 +4,7 @@ import { prisma } from '../../store/prisma';
 import { connectERPNext } from './erpnext.service';
 import { syncItemsFromERPNext } from './item-sync.service';
 import { requireAuth, requireBotAccess, requireBotRole } from '../../platform/auth/auth.middleware';
-import { validateExternalUrl } from '../../lib/validate-url';
+import { validateExternalUrlAsync, validateSlug } from '../../lib/validate-url';
 
 export default async function (app: FastifyInstance) {
   app.post('/platform/bots/:slug/erpnext/connect',
@@ -13,7 +13,7 @@ export default async function (app: FastifyInstance) {
       const { slug }                          = req.params as any;
       const { erpnextUrl, apiKey, apiSecret } = req.body as any;
 
-      const urlCheck = validateExternalUrl(erpnextUrl);
+      const urlCheck = await validateExternalUrlAsync(erpnextUrl);
       if (!urlCheck.valid) {
         return reply.status(400).send({ error: urlCheck.reason });
       }
@@ -72,8 +72,12 @@ export default async function (app: FastifyInstance) {
     { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] },
     async (req, reply) => {
       const { slug } = req.params as any;
+      const slugCheck = validateSlug(slug);
+      if (!slugCheck.valid) {
+        return reply.status(400).send({ error: slugCheck.reason });
+      }
       try {
-        const count = await syncItemsFromERPNext(slug);
+        const count = await syncItemsFromERPNext(slugCheck.slug);
         reply.send({ synced: true, itemCount: count });
       } catch (err: any) {
         reply.status(400).send({ synced: false, error: err.message });

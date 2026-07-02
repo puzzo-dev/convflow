@@ -30,24 +30,27 @@ export default async function settingsRoutes(app) {
         const tenant = await prisma.tenant.findUnique({ where: { slug } });
         if (!tenant)
             return reply.status(404).send({ error: 'Bot not found' });
-        const updated = await prisma.tenant.update({
-            where: { slug },
-            data: {
-                name: body.name ?? tenant.name,
-                ownerPhone: body.ownerPhone ?? tenant.ownerPhone,
-                active: body.active !== undefined ? body.active : tenant.active,
-                // Block raw configJson overwrites from settings API for security
-            }
-        });
-        // Merge the updated scalar fields into the cached config so the engine
-        // reflects the new name/ownerPhone without a full cache rebuild.
+        // Merge the updated scalar fields into configJson too. The engine reads
+        // ownerPhone/name from configJson (see tenant-router.refreshTenantCache),
+        // so writing only the scalar columns would silently revert on any cache
+        // rebuild. We persist BOTH the columns and the embedded config in one update.
         const existingConfig = tenant.configJson;
         const newConfig = {
             ...existingConfig,
-            name: updated.name,
-            ownerPhone: updated.ownerPhone,
-            active: updated.active,
+            name: body.name ?? tenant.name,
+            ownerPhone: body.ownerPhone ?? tenant.ownerPhone,
+            active: body.active !== undefined ? body.active : tenant.active,
         };
+        const updated = await prisma.tenant.update({
+            where: { slug },
+            data: {
+                name: newConfig.name,
+                ownerPhone: newConfig.ownerPhone,
+                active: newConfig.active,
+                configJson: newConfig, // keep engine source-of-truth in sync
+                // Note: only scalar-derived fields are merged; nested flows/messages are untouched.
+            }
+        });
         if (updated.active) {
             reloadTenant(newConfig);
         }

@@ -1,5 +1,6 @@
 // src/lib/validate-url.ts
 import { URL } from 'url';
+import { lookup } from 'dns/promises';
 
 const BLOCKED_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
 
@@ -54,6 +55,23 @@ function isPrivateHost(host: string): boolean {
   return normalized.includes(':') ? isPrivateIPv6(normalized) : isPrivateIPv4(normalized);
 }
 
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function validateSlug(
+  slug: string
+): { valid: true; slug: string } | { valid: false; reason: string } {
+  if (!slug || typeof slug !== 'string') {
+    return { valid: false, reason: 'Slug is required' };
+  }
+
+  const normalized = slug.trim().toLowerCase();
+  if (!SLUG_RE.test(normalized)) {
+    return { valid: false, reason: 'Invalid slug format' };
+  }
+
+  return { valid: true, slug: normalized };
+}
+
 export function validateExternalUrl(
   url: string
 ): { valid: true; origin: string } | { valid: false; reason: string } {
@@ -80,4 +98,33 @@ export function validateExternalUrl(
   // Normalize to origin so path/query fragments cannot be injected through baseURL.
   const origin = `${parsed.protocol}//${parsed.host}`;
   return { valid: true, origin };
+}
+
+const DNS_LOOKUP_MS = 5_000;
+
+export async function validateExternalUrlAsync(
+  url: string
+): Promise<{ valid: true; origin: string } | { valid: false; reason: string }> {
+  const sync = validateExternalUrl(url);
+  if (!sync.valid) return sync;
+
+  const parsed = new URL(url);
+  try {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DNS lookup timed out')), DNS_LOOKUP_MS)
+    );
+    const addresses = await Promise.race([
+      lookup(parsed.hostname, { all: true, verbatim: true }),
+      timeout,
+    ]);
+    for (const { address } of addresses) {
+      if (isPrivateHost(address)) {
+        return { valid: false, reason: 'Private or internal URLs are not allowed' };
+      }
+    }
+  } catch {
+    return { valid: false, reason: 'Could not resolve hostname' };
+  }
+
+  return sync;
 }

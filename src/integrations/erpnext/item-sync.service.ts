@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import { redis } from '../../store/redis';
-import { validateExternalUrl } from '../../lib/validate-url';
+import { validateExternalUrlAsync } from '../../lib/validate-url';
 import { ERPNextItem } from '../../types';
 
 const ITEM_CACHE_TTL = 60 * 30; // 30 minutes
@@ -14,7 +14,7 @@ export async function syncItemsFromERPNext(companySlug: string): Promise<number>
   });
   if (!conn) throw new Error(`No active ERPNext connection for ${companySlug}`);
 
-  const urlCheck = validateExternalUrl(conn.erpnextUrl);
+  const urlCheck = await validateExternalUrlAsync(conn.erpnextUrl);
   if (!urlCheck.valid) throw new Error(`Invalid ERPNext URL: ${urlCheck.reason}`);
   const baseURL = urlCheck.origin;
 

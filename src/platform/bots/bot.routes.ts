@@ -5,9 +5,10 @@ import { refreshTenantCache } from '../../engine/tenant-router';
 import axios from 'axios';
 import crypto from 'crypto';
 import { CompanyConfig } from '../../types';
+import { OPENWA_BASE_URL, sanitizeSessionId } from '../../channels/openwa.channel';
 
 const openwaClient = () => axios.create({
-  baseURL: process.env.OPENWA_BASE_URL ?? 'http://localhost:2785/api',
+  baseURL: OPENWA_BASE_URL,
   headers: { 'X-API-Key': process.env.OPENWA_API_KEY ?? '' },
   timeout: 10_000,
 });
@@ -127,7 +128,8 @@ export default async function botRoutes(app: FastifyInstance) {
     if (!tenant) return reply.status(404).send({ error: 'Bot not found' });
 
     try {
-      const res = await openwaClient().get(`/sessions/${tenant.openwaSessionId}/qr`);
+      const sessionId = sanitizeSessionId(tenant.openwaSessionId);
+      const res = await openwaClient().get(`/sessions/${sessionId}/qr`);
       const data = res.data as any;
       const qrImage = data.qrCode ?? data.qrImage ?? data.qr ?? data.base64 ?? null;
       reply.send({ status: data.status ?? 'STARTING', qrImage, phone: data.me?.user ?? null });
@@ -143,7 +145,8 @@ export default async function botRoutes(app: FastifyInstance) {
     if (!tenant) return reply.status(404).send({ error: 'Bot not found' });
 
     try {
-      await openwaClient().post(`/sessions/${tenant.openwaSessionId}/restart`);
+      const sessionId = sanitizeSessionId(tenant.openwaSessionId);
+      await openwaClient().post(`/sessions/${sessionId}/restart`);
       reply.send({ restarted: true, qrPollUrl: `/platform/bots/${slug}/qr` });
     } catch (err: any) {
       reply.status(500).send({ error: 'Failed to restart session', detail: err.message });

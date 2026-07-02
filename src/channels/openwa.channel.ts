@@ -35,23 +35,26 @@ export function validateOpenwaUrl(raw: string): URL {
   return url;
 }
 
-function sanitizeSessionId(raw: string): string {
+export function sanitizeSessionId(raw: string): string {
   // Prevent path traversal / query injection in the URL path segment.
   const safe = String(raw).replace(/[^a-zA-Z0-9_-]/g, '');
   if (!safe) throw new Error('Invalid OpenWA session ID');
   return safe;
 }
 
-// Use per-tenant OpenWA credentials from the config, falling back to env vars.
-// This enables each tenant to connect to their own OpenWA instance.
-function client(company: CompanyConfig, path: string, options: RequestInit) {
-  const cfg     = company as any;
-  const baseUrl = cfg.openwaBaseUrl ?? process.env.OPENWA_BASE_URL ?? 'http://localhost:2785/api';
-  const apiKey  = cfg.openwaApiKey  ?? process.env.OPENWA_API_KEY  ?? '';
+// Server-controlled OpenWA gateway. We deliberately do NOT use the per-tenant
+// config value for the URL because that value is derived from request-scoped
+// tenant data and could be manipulated to point at internal services (SSRF).
+export const OPENWA_BASE_URL = validateOpenwaUrl(
+  process.env.OPENWA_BASE_URL ?? 'http://localhost:2785/api'
+).toString();
 
-  const safeUrl = validateOpenwaUrl(baseUrl);
-  const finalUrl = new URL(safeUrl.href);
-  finalUrl.pathname = `${safeUrl.pathname.replace(/\/$/, '')}${path}`;
+function client(company: CompanyConfig, path: string, options: RequestInit) {
+  const cfg    = company as any;
+  const apiKey = cfg.openwaApiKey ?? process.env.OPENWA_API_KEY ?? '';
+
+  const finalUrl = new URL(OPENWA_BASE_URL);
+  finalUrl.pathname = `${finalUrl.pathname.replace(/\/$/, '')}${path}`;
 
   return fetch(finalUrl.toString(), {
     ...options,

@@ -3,6 +3,26 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { getCompanyBySessionId } from '../engine/tenant-router';
 import { handleInbound } from '../engine/flow-engine';
 
+function sanitizeSessionId(raw: unknown): string {
+  const s = String(raw ?? '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!s) throw new Error('Invalid sessionId');
+  return s;
+}
+
+function sanitizePhone(raw: unknown): string {
+  return String(raw ?? '').replace(/\D/g, '');
+}
+
+function sanitizeText(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw.trim(); // downstream JSON-stringification keeps it in the request body
+}
+
+function sanitizeProfileName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  return raw.trim();
+}
+
 function verifyWebhookHMAC(req: FastifyRequest): boolean {
   const secret = process.env.OPENWA_WEBHOOK_SECRET;
   if (!secret) return false;
@@ -35,12 +55,13 @@ export async function whatsappWebhookPost(req: FastifyRequest, reply: FastifyRep
     if (body.data?.isGroup)               return;
     if (body.data?.type !== 'chat')       return; // text only
 
-    const company = getCompanyBySessionId(body.sessionId);
-    if (!company) { console.warn(`Unknown sessionId: ${body.sessionId}`); return; }
+    const sessionId = sanitizeSessionId(body.sessionId);
+    const company   = getCompanyBySessionId(sessionId);
+    if (!company) { console.warn(`Unknown sessionId: ${sessionId}`); return; }
 
-    const phone       = (body.data.from as string).replace('@c.us', '');
-    const text        = body.data.body ?? '';
-    const profileName = body.data.contact?.pushName ?? null;
+    const phone       = sanitizePhone(body.data?.from);
+    const text        = sanitizeText(body.data?.body);
+    const profileName = sanitizeProfileName(body.data?.contact?.pushName);
 
     await handleInbound(phone, text, profileName, company);
   } catch (err) {

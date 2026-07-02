@@ -28,6 +28,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.DASHBOARD_ORIGIN) {
 }
 import { loadAllConfigs, seedTenants } from './config/loader';
 import { refreshTenantCache } from './engine/tenant-router';
+import { refreshPlugins } from './plugins/registry';
 import { whatsappWebhookPost } from './webhook/whatsapp';
 import { syncAllTenants } from './integrations/erpnext/item-sync.service';
 // Route imports
@@ -42,6 +43,8 @@ import accountRoutes from './platform/account/account.routes';
 import erpnextRoutes from './integrations/erpnext/erpnext.routes';
 import openwaProxyRoutes from './integrations/openwa-proxy.routes';
 import adminRoutes from './platform/admin/admin.routes';
+import notificationRoutes from './notifications/notification.routes';
+import pluginRoutes from './plugins/plugin.routes';
 // Augment fastify to save raw body for HMAC signature verification
 const fastify = Fastify({ logger: true });
 // CORS — restrict to the dashboard origin in production
@@ -86,6 +89,8 @@ fastify.register(accountRoutes);
 fastify.register(erpnextRoutes);
 fastify.register(openwaProxyRoutes);
 fastify.register(adminRoutes);
+fastify.register(notificationRoutes);
+fastify.register(pluginRoutes);
 fastify.get('/health', async () => {
     return { status: 'ok', service: 'convflow-engine' };
 });
@@ -97,6 +102,7 @@ const start = async () => {
             await seedTenants(configs);
         }
         await refreshTenantCache();
+        await refreshPlugins();
         // Background cron: sync all connected tenants every 30 minutes
         setInterval(() => {
             syncAllTenants().catch(err => console.error('Cron item sync failed:', err));

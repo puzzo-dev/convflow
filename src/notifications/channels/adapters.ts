@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { validateOpenwaUrl, sanitizeSessionId } from '../../channels/openwa.channel';
 import { ChannelAdapter, Provider, SendResult } from './types';
 
 // ── SMTP (email) ──────────────────────────────────────────────────────────────
@@ -61,10 +62,15 @@ const openwaAdapter: ChannelAdapter = {
   provider: 'openwa',
   async send(creds, target, message): Promise<SendResult> {
     try {
-      const baseUrl = creds.baseUrl || process.env.OPENWA_BASE_URL || 'http://localhost:2785/api';
-      const apiKey  = creds.apiKey  || process.env.OPENWA_API_KEY  || '';
-      const to      = target.replace(/\D/g, '');
-      const res = await fetch(`${baseUrl}/sessions/${creds.sessionId}/messages/send-text`, {
+      const baseUrl   = creds.baseUrl || process.env.OPENWA_BASE_URL || 'http://localhost:2785/api';
+      const apiKey    = creds.apiKey  || process.env.OPENWA_API_KEY  || '';
+      const to        = target.replace(/\D/g, '');
+      const sessionId = sanitizeSessionId(creds.sessionId);
+      const safeUrl   = validateOpenwaUrl(baseUrl);
+      const finalUrl  = new URL(safeUrl.href);
+      finalUrl.pathname = `${safeUrl.pathname.replace(/\/$/, '')}/sessions/${sessionId}/messages/send-text`;
+
+      const res = await fetch(finalUrl.toString(), {
         method: 'POST',
         headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ chatId: `${to}@c.us`, text: message }),

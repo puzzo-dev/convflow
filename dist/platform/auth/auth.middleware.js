@@ -1,5 +1,6 @@
 import { verifyToken } from './auth.service';
 import { prisma } from '../../store/prisma';
+import { getEffectiveBotRole, roleSatisfies } from './roles';
 export async function requireAuth(req, reply) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -28,18 +29,19 @@ export async function requireBotAccess(req, reply) {
     const { slug } = req.params;
     if (!slug)
         return reply.status(400).send({ error: 'Missing bot slug parameter' });
-    if (user.role === 'super_admin')
+    if (user.role === 'super_admin') {
+        req.botRole = 'owner';
         return;
-    const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+    }
+    const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true, organizationId: true } });
     if (!tenant)
         return reply.status(404).send({ error: 'Bot not found' });
-    const membership = await prisma.tenantMembership.findUnique({
-        where: { userId_tenantId: { userId: user.userId, tenantId: tenant.id } },
-    });
-    if (!membership) {
+    // Hybrid: org-wide role OR per-bot role (whichever is higher).
+    const botRole = await getEffectiveBotRole(user.userId, tenant);
+    if (!botRole) {
         return reply.status(403).send({ error: 'Forbidden: You do not have access to this bot.' });
     }
-    req.membership = membership;
+    req.botRole = botRole;
 }
 export function requireBotRole(allowedRoles) {
     return async (req, reply) => {
@@ -49,18 +51,18 @@ export function requireBotRole(allowedRoles) {
         const { slug } = req.params;
         if (!slug)
             return reply.status(400).send({ error: 'Missing bot slug parameter' });
-        if (user.role === 'super_admin')
+        if (user.role === 'super_admin') {
+            req.botRole = 'owner';
             return;
-        const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+        }
+        const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true, organizationId: true } });
         if (!tenant)
             return reply.status(404).send({ error: 'Bot not found' });
-        const membership = await prisma.tenantMembership.findUnique({
-            where: { userId_tenantId: { userId: user.userId, tenantId: tenant.id } },
-        });
-        if (!membership || !allowedRoles.includes(membership.role)) {
+        const botRole = await getEffectiveBotRole(user.userId, tenant);
+        if (!roleSatisfies(botRole, allowedRoles)) {
             return reply.status(403).send({ error: 'Forbidden: insufficient bot role.' });
         }
-        req.membership = membership;
+        req.botRole = botRole;
     };
 }
 export async function requireAdmin(req, reply) {

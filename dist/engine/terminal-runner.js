@@ -3,22 +3,7 @@ import { scoreAnswers } from './scoring-engine';
 import { pushLeadToERPNext, createSalesOrderInERPNext } from '../integrations/erpnext/erpnext.service';
 import { notifyOwner } from '../notifications/notifier';
 import { sendMessage } from '../channels/openwa.channel';
-const WEBHOOK_TIMEOUT_MS = 15_000;
-// Block SSRF targets: private/loopback/link-local/metadata hosts
-const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.0\.0\.0|::1|fd[0-9a-f]{2}:)/i;
-function validateWebhookUrl(raw) {
-    let url;
-    try {
-        url = new URL(raw);
-    }
-    catch {
-        throw new Error(`Invalid webhook URL: ${raw}`);
-    }
-    if (!['http:', 'https:'].includes(url.protocol))
-        throw new Error('Webhook URL must use http or https');
-    if (PRIVATE_HOST_RE.test(url.hostname))
-        throw new Error('Webhook URL targets a private or reserved address');
-}
+import { guardedFetch } from './webhook-util';
 export async function runTerminal(stage, state, phone, company) {
     const t = stage.terminal;
     switch (t.type) {
@@ -84,28 +69,19 @@ export async function runTerminal(stage, state, phone, company) {
             try {
                 if (!webhookUrl)
                     throw new Error('Webhook terminal missing URL');
-                validateWebhookUrl(webhookUrl);
-                const ac = new AbortController();
-                const timer = setTimeout(() => ac.abort(), WEBHOOK_TIMEOUT_MS);
-                try {
-                    const response = await fetch(webhookUrl, {
-                        method: 'POST',
-                        signal: ac.signal,
-                        headers: { 'Content-Type': 'application/json', ...(t.headers ?? {}) },
-                        body: JSON.stringify({
-                            companySlug: company.slug,
-                            phone,
-                            name: state.name,
-                            answers: state.answers,
-                            completedAt: new Date().toISOString(),
-                        }),
-                    });
-                    if (!response.ok)
-                        throw new Error(`Webhook responded with status ${response.status}`);
-                }
-                finally {
-                    clearTimeout(timer);
-                }
+                const response = await guardedFetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(t.headers ?? {}) },
+                    body: JSON.stringify({
+                        companySlug: company.slug,
+                        phone,
+                        name: state.name,
+                        answers: state.answers,
+                        completedAt: new Date().toISOString(),
+                    }),
+                });
+                if (!response.ok)
+                    throw new Error(`Webhook responded with status ${response.status}`);
             }
             catch (err) {
                 console.error(`[${company.slug}] Webhook terminal failed:`, err.message);
