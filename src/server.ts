@@ -49,6 +49,7 @@ import openwaProxyRoutes from './integrations/openwa-proxy.routes';
 import adminRoutes from './platform/admin/admin.routes';
 import notificationRoutes from './notifications/notification.routes';
 import pluginRoutes from './plugins/plugin.routes';
+import orgRoutes from './platform/org/org.routes';
 
 // Augment fastify to save raw body for HMAC signature verification
 const fastify = Fastify({ logger: true });
@@ -98,6 +99,7 @@ fastify.register(openwaProxyRoutes);
 fastify.register(adminRoutes);
 fastify.register(notificationRoutes);
 fastify.register(pluginRoutes);
+fastify.register(orgRoutes);
 
 fastify.get('/health', async () => {
   return { status: 'ok', service: 'convflow-engine' };

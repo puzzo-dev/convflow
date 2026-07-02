@@ -13,11 +13,23 @@ export default async function adminRoutes(app: FastifyInstance) {
         role:      true,
         active:    true,
         createdAt: true,
-        _count: { select: { memberships: true } },
+        _count: { select: { orgMemberships: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
     reply.send({ users });
+  });
+
+  // GET /platform/admin/organizations — every tenant/business with counts
+  app.get('/platform/admin/organizations', { preHandler: [requireAuth, requireAdmin] }, async (_req, reply) => {
+    const orgs = await prisma.organization.findMany({
+      select: {
+        id: true, name: true, slug: true, createdAt: true,
+        _count: { select: { memberships: true, bots: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    reply.send({ organizations: orgs });
   });
 
   // PATCH /platform/admin/users/:id/role — promote/demote

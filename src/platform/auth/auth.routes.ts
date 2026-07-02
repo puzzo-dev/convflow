@@ -40,9 +40,20 @@ export default async function authRoutes(app: FastifyInstance) {
 
     const passwordHash = await hashPassword(password);
     const apiKey = `cf_${crypto.randomBytes(30).toString('hex')}`;
+    const orgSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
+      + '-' + crypto.randomBytes(2).toString('hex');
 
+    // A new signup creates a User AND their Organization, with the user as owner.
     const user = await prisma.user.create({
-      data: { name, email, passwordHash, apiKey, role: 'member' },
+      data: {
+        name, email, passwordHash, apiKey, role: 'member',
+        orgMemberships: {
+          create: {
+            role: 'owner',
+            org: { create: { name: `${name}'s Organization`, slug: orgSlug } },
+          },
+        },
+      },
     });
 
     const token = generateToken({ userId: user.id, email: user.email, role: user.role });

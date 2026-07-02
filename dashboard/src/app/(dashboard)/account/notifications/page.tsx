@@ -71,7 +71,7 @@ export default function NotificationsPage() {
         </button>
       </div>
 
-      <div className="glass-panel overflow-hidden max-w-3xl">
+      <div className="glass-panel overflow-hidden">
         {channels.length === 0 ? (
           <div className="p-12 text-center text-muted text-sm">
             No channels yet. Add one to control where lead alerts are delivered.

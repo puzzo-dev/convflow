@@ -41,7 +41,7 @@ export default function AdminUsersPage() {
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr>
-                {['Name', 'Email', 'Role', 'Active', 'Bots', 'Joined', 'Actions'].map(h => (
+                {['Name', 'Email', 'Role', 'Active', 'Orgs', 'Joined', 'Actions'].map(h => (
                   <th key={h} className="px-5 py-3.5 text-xs font-semibold text-muted uppercase tracking-wider bg-white/3 border-b border-white/10">
                     {h}
                   </th>
@@ -69,7 +69,7 @@ export default function AdminUsersPage() {
                       {u.active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5 text-secondary">{u._count?.memberships ?? 0}</td>
+                  <td className="px-5 py-3.5 text-secondary">{u._count?.orgMemberships ?? 0}</td>
                   <td className="px-5 py-3.5 text-secondary text-xs">
                     {new Date(u.createdAt).toLocaleDateString()}
                   </td>

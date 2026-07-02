@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../store/prisma';
 import { requireAuth, requireBotAccess, requireBotRole } from '../auth/auth.middleware';
+import { getPrimaryOrgId } from '../auth/roles';
 import { refreshTenantCache } from '../../engine/tenant-router';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -18,19 +19,28 @@ export default async function botRoutes(app: FastifyInstance) {
   app.get('/platform/bots', { preHandler: [requireAuth] }, async (req, reply) => {
     const user = (req as any).user;
 
+    const select = { slug: true, name: true, openwaSessionId: true, active: true, createdAt: true } as const;
+
     let bots;
     if (user.role === 'super_admin') {
-      bots = await prisma.tenant.findMany({
-        select:  { slug: true, name: true, openwaSessionId: true, active: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      });
+      bots = await prisma.tenant.findMany({ select, orderBy: { createdAt: 'desc' } });
     } else {
-      const memberships = await prisma.tenantMembership.findMany({
-        where:   { userId: user.userId },
-        include: { tenant: { select: { slug: true, name: true, openwaSessionId: true, active: true, createdAt: true } } },
+      // Hybrid visibility: every bot in the user's organizations, PLUS any bot
+      // they have an explicit per-bot membership on.
+      const [orgs, perBot] = await Promise.all([
+        prisma.organizationMembership.findMany({ where: { userId: user.userId }, select: { orgId: true } }),
+        prisma.tenantMembership.findMany({ where: { userId: user.userId }, select: { tenantId: true } }),
+      ]);
+      bots = await prisma.tenant.findMany({
+        where: {
+          OR: [
+            { organizationId: { in: orgs.map(o => o.orgId) } },
+            { id: { in: perBot.map(m => m.tenantId) } },
+          ],
+        },
+        select,
         orderBy: { createdAt: 'desc' },
       });
-      bots = memberships.map(m => m.tenant);
     }
 
     reply.send({ bots });
@@ -90,11 +100,21 @@ export default async function botRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: `A bot with slug "${slug}" already exists` });
     }
 
+    // The bot belongs to the creator's organization. Super admins may not have
+    // one — they create under whichever org they own/admin, else it's an error.
+    const orgId = await getPrimaryOrgId(user.userId);
+    if (!orgId) {
+      return reply.status(400).send({ error: 'You must belong to an organization to create a bot.' });
+    }
+
     const tenant = await prisma.tenant.create({
-      data: { slug, name, openwaSessionId: sessionId, ownerPhone, configJson: defaultConfig as object, active: true },
+      data: {
+        slug, name, openwaSessionId: sessionId, ownerPhone,
+        configJson: defaultConfig as object, active: true, organizationId: orgId,
+      },
     });
 
-    // Grant the creating user owner-level access
+    // Also grant an explicit per-bot owner membership (used by owner-alert lookups).
     await prisma.tenantMembership.create({
       data: { userId: user.userId, tenantId: tenant.id, role: 'owner' },
     });

@@ -151,6 +151,7 @@ function TenantShell({ pathname, activeSlug, email }: { pathname: string; active
         {activeSlug && <div className="mt-1"><BotSections slug={activeSlug} pathname={pathname} /></div>}
 
         <SectionLabel>Account</SectionLabel>
+        <NavLink href="/team" active={pathname.startsWith('/team')}><Users size={16} /> Team</NavLink>
         <NavLink href="/account" active={pathname === '/account'}><User size={16} /> Account Profile</NavLink>
         <NavLink href="/account/notifications" active={pathname.startsWith('/account/notifications')}><Bell size={16} /> Notifications</NavLink>
       </nav>

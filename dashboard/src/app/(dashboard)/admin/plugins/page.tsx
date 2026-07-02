@@ -56,7 +56,7 @@ export default function AdminPluginsPage() {
       {isLoading ? (
         <div className="glass-panel p-16 text-center"><Loader2 size={24} className="animate-spin mx-auto text-accent" /></div>
       ) : (
-        <div className="flex flex-col gap-4 max-w-3xl">
+        <div className="flex flex-col gap-4">
           {plugins.map(p => (
             <div key={p.pluginId} className="glass-panel p-5 flex items-center gap-4">
               <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center text-accent flex-shrink-0">
