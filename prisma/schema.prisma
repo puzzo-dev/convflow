@@ -70,6 +70,19 @@ model Plugin {
   @@map("plugins")
 }
 
+// ── Plugins: per-tenant credentials for "stored" plugins (encrypted at rest) ──
+model PluginCredential {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companySlug String   @map("company_slug") @db.VarChar(80)
+  pluginId    String   @map("plugin_id") @db.VarChar(80)
+  credentials String                              // AES-GCM encrypted JSON blob
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([companySlug, pluginId])
+  @@map("plugin_credentials")
+}
+
 // ── Notifications: per-user delivery channels (creds encrypted at rest) ────────
 model NotificationChannel {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

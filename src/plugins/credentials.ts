@@ -1,8 +1,10 @@
 import { prisma } from '../store/prisma';
 import { PluginManifest } from './types';
+import { decryptJson } from '../notifications/crypto';
 
 // Resolve a plugin's credentials FOR A SPECIFIC TENANT. ERPNext reuses the
-// tenant's existing ErpnextConnection, so there's no duplicate credential entry.
+// tenant's existing ErpnextConnection; 'stored' plugins read their own
+// per-tenant encrypted PluginCredential row.
 export async function resolveCreds(manifest: PluginManifest, companySlug: string): Promise<Record<string, string>> {
   if (manifest.credentials.source === 'erpnext_connection') {
     const conn = await prisma.erpnextConnection.findUnique({ where: { companySlug } });
@@ -14,8 +16,13 @@ export async function resolveCreds(manifest: PluginManifest, companySlug: string
       apiSecret: conn.apiSecret,
     };
   }
-  // 'stored' source (future generic plugins) would read a per-tenant PluginInstall row.
-  throw new Error(`Unsupported credential source for plugin "${manifest.id}"`);
+
+  // 'stored' source — per-tenant encrypted credentials.
+  const row = await prisma.pluginCredential.findUnique({
+    where: { companySlug_pluginId: { companySlug, pluginId: manifest.id } },
+  });
+  if (!row) throw new Error(`"${manifest.name}" is not configured for this bot.`);
+  return decryptJson<Record<string, string>>(row.credentials);
 }
 
 // Whether a tenant has configured this plugin (drives availability in the builder).
@@ -24,5 +31,9 @@ export async function isPluginConfigured(manifest: PluginManifest, companySlug: 
     const conn = await prisma.erpnextConnection.findUnique({ where: { companySlug } });
     return !!conn && conn.status === 'connected';
   }
-  return false;
+  const row = await prisma.pluginCredential.findUnique({
+    where: { companySlug_pluginId: { companySlug, pluginId: manifest.id } },
+    select: { id: true },
+  });
+  return !!row;
 }

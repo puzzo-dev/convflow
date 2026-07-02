@@ -1,10 +1,11 @@
 import { FastifyInstance } from 'fastify';
-import { requireAuth, requireBotAccess, requireAdmin } from '../platform/auth/auth.middleware';
+import { requireAuth, requireBotAccess, requireBotRole, requireAdmin } from '../platform/auth/auth.middleware';
 import { prisma } from '../store/prisma';
 import { listPlugins, getPlugin, listPluginsForAdmin, isBuiltin, refreshPlugins } from './registry';
 import { isPluginConfigured, resolveCreds } from './credentials';
 import { resolvePluginOptions } from './runner';
 import { validateManifest } from './validate';
+import { encryptJson } from '../notifications/crypto';
 
 export default async function pluginRoutes(app: FastifyInstance) {
   // ── Admin: manage the global plugin registry at runtime ──────────────────────
@@ -65,10 +66,61 @@ export default async function pluginRoutes(app: FastifyInstance) {
       name: p.name,
       description: p.description,
       credentialSource: p.credentials.source,
+      // Field defs for "stored" plugins so tenants can enter their own creds.
+      credentialFields: p.credentials.source === 'stored' ? p.credentials.fields : [],
       actions: p.actions.map(a => ({ id: a.id, label: a.label, verb: a.verb, inputs: a.inputs })),
     }));
     reply.send({ plugins });
   });
+
+  // ── Per-tenant credentials for "stored" plugins ──────────────────────────────
+  // GET status + field defs (never values).
+  app.get('/platform/bots/:slug/plugins/:pluginId/credentials',
+    { preHandler: [requireAuth, requireBotAccess] },
+    async (req, reply) => {
+      const { slug, pluginId } = req.params as any;
+      const manifest = getPlugin(pluginId);
+      if (!manifest) return reply.status(404).send({ error: 'Unknown plugin' });
+      if (manifest.credentials.source !== 'stored') {
+        return reply.status(400).send({ error: 'This plugin does not use stored credentials.' });
+      }
+      const configured = await isPluginConfigured(manifest, slug);
+      reply.send({ pluginId, configured, fields: manifest.credentials.fields });
+    },
+  );
+
+  // POST — save/replace credentials (encrypted). Owner/admin only.
+  app.post('/platform/bots/:slug/plugins/:pluginId/credentials',
+    { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] },
+    async (req, reply) => {
+      const { slug, pluginId } = req.params as any;
+      const { credentials } = req.body as any;
+      const manifest = getPlugin(pluginId);
+      if (!manifest) return reply.status(404).send({ error: 'Unknown plugin' });
+      if (manifest.credentials.source !== 'stored') {
+        return reply.status(400).send({ error: 'This plugin does not use stored credentials.' });
+      }
+      if (!credentials || typeof credentials !== 'object') {
+        return reply.status(400).send({ error: 'credentials object is required' });
+      }
+      await prisma.pluginCredential.upsert({
+        where:  { companySlug_pluginId: { companySlug: slug, pluginId } },
+        update: { credentials: encryptJson(credentials) },
+        create: { companySlug: slug, pluginId, credentials: encryptJson(credentials) },
+      });
+      reply.status(201).send({ configured: true });
+    },
+  );
+
+  // DELETE — remove stored credentials. Owner/admin only.
+  app.delete('/platform/bots/:slug/plugins/:pluginId/credentials',
+    { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] },
+    async (req, reply) => {
+      const { slug, pluginId } = req.params as any;
+      await prisma.pluginCredential.deleteMany({ where: { companySlug: slug, pluginId } });
+      reply.status(204).send();
+    },
+  );
 
   // Per-tenant status: is this plugin configured for this bot?
   app.get('/platform/bots/:slug/plugins/:pluginId/status',

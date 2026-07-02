@@ -131,6 +131,113 @@ export default function SettingsPage({ params }: { params: Promise<{ slug: strin
           </div>
         </form>
       </div>
+
+      <MembersCard slug={slug} />
     </>
+  );
+}
+
+const ROLE_BADGE: Record<string, string> = {
+  owner: 'bg-accent/20 text-accent', admin: 'bg-warning/15 text-warning',
+  member: 'bg-white/5 text-secondary', viewer: 'bg-white/5 text-muted',
+};
+const BOT_ROLES = ['owner', 'admin', 'member', 'viewer'];
+
+// Per-bot member overrides (the per-bot half of the hybrid role model).
+function MembersCard({ slug }: { slug: string }) {
+  const { data, mutate } = useSWR(`/platform/bots/${slug}/members`, fetcher);
+  const members: any[] = data?.members ?? [];
+  const canManage: boolean = data?.canManage ?? false;
+  const [adding, setAdding] = useState(false);
+
+  const changeRole = async (userId: string, role: string) => {
+    await apiFetch(`/platform/bots/${slug}/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) });
+    await mutate();
+  };
+  const remove = async (userId: string) => {
+    if (!confirm('Remove this per-bot role? The user keeps any organization-level access.')) return;
+    await apiFetch(`/platform/bots/${slug}/members/${userId}`, { method: 'DELETE' });
+    await mutate();
+  };
+
+  return (
+    <div className="glass-panel p-8 mt-6">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><Users size={18} className="text-accent" /> Bot Members</h2>
+        {canManage && (
+          <button onClick={() => setAdding(true)} className="btn btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5"><Plus size={14} /> Add</button>
+        )}
+      </div>
+      <p className="text-secondary text-sm mb-5">Per-bot roles. These override a user’s organization role for this bot only.</p>
+
+      {members.length === 0 ? (
+        <div className="text-sm text-muted py-3">No per-bot overrides. Access is governed by organization roles.</div>
+      ) : (
+        <div className="divide-y divide-white/5">
+          {members.map(m => (
+            <div key={m.userId} className="flex items-center gap-4 py-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{m.name}</div>
+                <div className="text-xs text-muted truncate">{m.email}</div>
+              </div>
+              {canManage ? (
+                <select className="input text-xs w-28 py-1" value={m.role} onChange={e => changeRole(m.userId, e.target.value)}>
+                  {BOT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              ) : (
+                <span className={`badge ${ROLE_BADGE[m.role] ?? ''}`}>{m.role}</span>
+              )}
+              {canManage && <button onClick={() => remove(m.userId)} className="text-danger hover:opacity-80"><Trash2 size={15} /></button>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {adding && (
+        <AddBotMember slug={slug} onClose={() => setAdding(false)} onDone={async () => { setAdding(false); await mutate(); }} />
+      )}
+    </div>
+  );
+}
+
+function AddBotMember({ slug, onClose, onDone }: { slug: string; onClose: () => void; onDone: () => void }) {
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('member');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try {
+      await apiFetch(`/platform/bots/${slug}/members`, { method: 'POST', body: JSON.stringify({ email, role }) });
+      onDone();
+    } catch (err: any) { setError(err.message ?? 'Failed to add member'); setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div className="glass-panel w-full max-w-md p-8 relative" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-muted hover:text-primary"><X size={18} /></button>
+        <h2 className="text-xl font-bold mb-1">Add Bot Member</h2>
+        <p className="text-secondary text-sm mb-6">Grant an existing user a role on this bot.</p>
+        {error && <div className="mb-4 px-4 py-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">{error}</div>}
+        <form onSubmit={submit} className="flex flex-col gap-5">
+          <div>
+            <label className="label">Email</label>
+            <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@company.com" required />
+          </div>
+          <div>
+            <label className="label">Role on this bot</label>
+            <select className="input" value={role} onChange={e => setRole(e.target.value)}>
+              {BOT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <button type="submit" className="btn btn-primary mt-1" disabled={saving}>
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Adding...</> : 'Add Member'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
