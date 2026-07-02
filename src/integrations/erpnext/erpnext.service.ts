@@ -22,8 +22,15 @@ async function assertErpnextUrl(url: string): Promise<string> {
 
 export async function connectERPNext(payload: ConnectERPNextPayload): Promise<void> {
   const { companySlug, sessionId, erpnextUrl, apiKey, apiSecret, openwaApiKey } = payload;
+  // SSRF mitigations (see also validate-url.ts):
+  //  1. assertErpnextUrl → validateExternalUrlAsync: http/https-only scheme allowlist,
+  //     blocks private hostnames, resolves DNS and rejects private/reserved IPs.
+  //  2. safeHttpAgent/safeHttpsAgent: custom DNS lookup re-checks and blocks private
+  //     IPs AT CONNECTION TIME, defeating DNS-rebinding/TOCTOU bypasses.
+  //  3. maxRedirects: 0 blocks redirect-to-internal SSRF.
   const baseURL = await assertErpnextUrl(erpnextUrl);
   const authHeader = `token ${apiKey}:${apiSecret}`;
+  // deepcode ignore Ssrf: baseURL is validated + DNS-checked above and every request uses safeHttp(s)Agent which blocks private IPs at connect time; maxRedirects:0.
   const client = axios.create({
     baseURL,
     headers: { Authorization: authHeader, 'Content-Type': 'application/json' },

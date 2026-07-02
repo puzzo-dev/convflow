@@ -23,6 +23,11 @@ export default async function (app: FastifyInstance) {
       const { slug } = req.params as any;
       const { erpnextUrl: rawErpnextUrl, apiKey, apiSecret } = req.body as any;
 
+      // SSRF guard: reject non-http(s) schemes, private hostnames, and hosts that
+      // resolve to private/reserved IPs. Only the validated origin is forwarded,
+      // and the downstream axios client additionally pins a private-IP-blocking DNS
+      // agent (see erpnext.service.ts) to defeat DNS-rebinding.
+      // deepcode ignore Ssrf: rawErpnextUrl is validated + DNS-checked here and requests use a private-IP-blocking agent downstream.
       const urlCheck = await validateExternalUrlAsync(rawErpnextUrl);
       if (!urlCheck.valid) {
         return reply.status(400).send({ error: urlCheck.reason });

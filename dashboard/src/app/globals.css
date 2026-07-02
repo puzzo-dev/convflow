@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Force dark rendering for native controls (select/option/inputs/scrollbars) so
+   their text is light, not black. Kept at top level (not in @layer) so it is
+   emitted with normal priority and can't be dropped/cached by the layer. */
+:root {
+  color-scheme: dark;
+}
+
 @theme {
   /* ── Neutrals (flat, true-neutral with a faint warm cast) ─────────────── */
   --color-base: #0a0a0a;          /* page background */
@@ -30,19 +37,9 @@
 }
 
 @layer base {
-  /* Render native controls (select, option, inputs, scrollbars) in dark mode,
-     so their text is light instead of black. */
-  html {
-    color-scheme: dark;
-  }
   body {
     /* Flat matte — no radial-gradient glow. */
     @apply bg-base text-primary font-sans antialiased min-h-screen;
-  }
-  /* Belt-and-suspenders: force select/option text to the theme colors. */
-  select, option {
-    color: var(--color-primary);
-    background-color: var(--color-input);
   }
 }
 
@@ -92,4 +89,21 @@
   width: 0 !important;
   height: 0 !important;
   display: none !important;   /* Chrome / Safari / WebKit */
+}
+
+/* Native form controls — force light text on the dark surface so nothing renders
+   as black. Top-level (not layered) so it always wins over UA defaults. */
+select,
+option,
+input,
+textarea {
+  color: var(--color-primary);
+}
+select,
+option {
+  background-color: var(--color-input);
+}
+select option:checked,
+select option:hover {
+  background-color: var(--color-surface-hover);
 }
