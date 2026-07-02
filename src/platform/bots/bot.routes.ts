@@ -251,4 +251,75 @@ export default async function botRoutes(app: FastifyInstance) {
       reply.status(500).send({ error: 'Failed to restart session', detail: err.message });
     }
   });
+
+  // ── Per-bot members (the per-bot half of the hybrid role model) ─────────────
+  const ASSIGNABLE = ['owner', 'admin', 'member', 'viewer'];
+
+  // GET — list per-bot role overrides for this bot. Any bot viewer may read;
+  // canManage tells the UI whether to show edit controls.
+  app.get('/platform/bots/:slug/members', { preHandler: [requireAuth, requireBotAccess] }, async (req, reply) => {
+    const { slug } = req.params as any;
+    const botRole = (req as any).botRole;
+    const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+    if (!tenant) return reply.status(404).send({ error: 'Bot not found' });
+
+    const rows = await prisma.tenantMembership.findMany({
+      where:   { tenantId: tenant.id },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    reply.send({
+      members: rows.map(r => ({ userId: r.userId, name: r.user.name, email: r.user.email, role: r.role })),
+      canManage: roleSatisfies(botRole, ['admin']),
+    });
+  });
+
+  // POST — grant/set a per-bot role for a user (by email).
+  app.post('/platform/bots/:slug/members', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
+    const { slug } = req.params as any;
+    const { email, role } = req.body as any;
+    if (!ASSIGNABLE.includes(role)) return reply.status(400).send({ error: 'Invalid role' });
+
+    const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+    if (!tenant) return reply.status(404).send({ error: 'Bot not found' });
+
+    const user = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() }, select: { id: true } });
+    if (!user) return reply.status(404).send({ error: 'No user with that email.' });
+
+    await prisma.tenantMembership.upsert({
+      where:  { userId_tenantId: { userId: user.id, tenantId: tenant.id } },
+      update: { role },
+      create: { userId: user.id, tenantId: tenant.id, role },
+    });
+    reply.status(201).send({ ok: true });
+  });
+
+  // PATCH — change a user's per-bot role.
+  app.patch('/platform/bots/:slug/members/:userId', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
+    const { slug, userId } = req.params as any;
+    const { role } = req.body as any;
+    if (!ASSIGNABLE.includes(role)) return reply.status(400).send({ error: 'Invalid role' });
+
+    const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+    if (!tenant) return reply.status(404).send({ error: 'Bot not found' });
+
+    const existing = await prisma.tenantMembership.findUnique({ where: { userId_tenantId: { userId, tenantId: tenant.id } } });
+    if (!existing) return reply.status(404).send({ error: 'Member not found' });
+
+    await prisma.tenantMembership.update({ where: { userId_tenantId: { userId, tenantId: tenant.id } }, data: { role } });
+    reply.send({ ok: true });
+  });
+
+  // DELETE — remove a user's per-bot role override.
+  app.delete('/platform/bots/:slug/members/:userId', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
+    const { slug, userId } = req.params as any;
+    const tenant = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+    if (!tenant) return reply.status(404).send({ error: 'Bot not found' });
+
+    const existing = await prisma.tenantMembership.findUnique({ where: { userId_tenantId: { userId, tenantId: tenant.id } } });
+    if (!existing) return reply.status(404).send({ error: 'Member not found' });
+
+    await prisma.tenantMembership.delete({ where: { userId_tenantId: { userId, tenantId: tenant.id } } });
+    reply.status(204).send();
+  });
 }
