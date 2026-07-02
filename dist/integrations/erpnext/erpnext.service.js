@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import crypto from 'crypto';
-import { validateExternalUrlAsync } from '../../lib/validate-url';
+import { validateExternalUrlAsync, safeHttpAgent, safeHttpsAgent } from '../../lib/validate-url';
 async function assertErpnextUrl(url) {
     const result = await validateExternalUrlAsync(url);
     if (!result.valid)
@@ -17,6 +17,9 @@ export async function connectERPNext(payload) {
         baseURL,
         headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
         timeout: 15_000,
+        maxRedirects: 0, // Prevent SSRF via redirect to internal endpoints
+        httpAgent: safeHttpAgent,
+        httpsAgent: safeHttpsAgent,
     });
     // Step 1: Verify credentials
     try {
@@ -44,8 +47,8 @@ export async function connectERPNext(payload) {
     // Step 4: Save connection to DB via Prisma (safe upsert — no raw SQL)
     await prisma.erpnextConnection.upsert({
         where: { companySlug },
-        update: { erpnextUrl, apiKey, apiSecret, status: 'connected', errorMessage: null, connectedAt: new Date() },
-        create: { companySlug, erpnextUrl, apiKey, apiSecret, status: 'connected' },
+        update: { erpnextUrl: baseURL, apiKey, apiSecret, status: 'connected', errorMessage: null, connectedAt: new Date() },
+        create: { companySlug, erpnextUrl: baseURL, apiKey, apiSecret, status: 'connected' },
     });
     // Store proxy secret in tenant config
     const tenant = await prisma.tenant.findUnique({ where: { slug: companySlug } });
@@ -86,6 +89,9 @@ export async function pushLeadToERPNext(companySlug, phone, name, answers, score
         await axios.post(`${baseURL}/api/resource/Lead`, leadPayload, {
             headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
             timeout: 10_000,
+            maxRedirects: 0,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
         });
         await prisma.erpnextConnection.update({
             where: { companySlug },
@@ -147,7 +153,13 @@ export async function createSalesOrderInERPNext(companySlug, phone, name, answer
         ...extraFields,
     };
     try {
-        const res = await axios.post(`${baseURL}/api/resource/Sales Order`, orderPayload, { headers: { Authorization: authHeader, 'Content-Type': 'application/json' }, timeout: 15_000 });
+        const res = await axios.post(`${baseURL}/api/resource/Sales Order`, orderPayload, {
+            headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+            timeout: 15_000,
+            maxRedirects: 0,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
+        });
         await prisma.erpnextConnection.update({
             where: { companySlug },
             data: { lastSyncAt: new Date() },
@@ -170,6 +182,9 @@ async function resolveOrCreateCustomer(baseURL, authHeader, phone, name) {
             params: { filters: JSON.stringify([['mobile_no', '=', normalizedPhone]]), fields: '["name"]', limit: 1 },
             headers: { Authorization: authHeader },
             timeout: 10_000,
+            maxRedirects: 0,
+            httpAgent: safeHttpAgent,
+            httpsAgent: safeHttpsAgent,
         });
         if (res.data.data?.length)
             return res.data.data[0].name;
@@ -186,6 +201,9 @@ async function resolveOrCreateCustomer(baseURL, authHeader, phone, name) {
     }, {
         headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
         timeout: 10_000,
+        maxRedirects: 0,
+        httpAgent: safeHttpAgent,
+        httpsAgent: safeHttpsAgent,
     });
     return customerName;
 }

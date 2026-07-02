@@ -54,7 +54,7 @@ export default async function analyticsRoutes(app) {
             orderBy: { _count: { source: 'desc' } },
             take: 10,
         });
-        const topSources = sourcesRaw.map(r => ({ source: r.source ?? 'direct', count: r._count.source }));
+        const topSources = sourcesRaw.map((r) => ({ source: r.source ?? 'direct', count: r._count.source }));
         reply.send({
             stats: {
                 totalLeads,

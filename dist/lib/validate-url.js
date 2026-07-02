@@ -1,6 +1,9 @@
 // src/lib/validate-url.ts
 import { URL } from 'url';
 import { lookup } from 'dns/promises';
+import { lookup as dnsLookup } from 'dns';
+import http from 'http';
+import https from 'https';
 const BLOCKED_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
 function isPrivateIPv4(ip) {
     const parts = ip.split('.').map(Number);
@@ -105,3 +108,20 @@ export async function validateExternalUrlAsync(url) {
     }
     return sync;
 }
+function safeLookup(hostname, _options, callback) {
+    dnsLookup(hostname, { all: true, verbatim: true }, (err, addresses) => {
+        if (err)
+            return callback(err, '', 0);
+        if (!addresses.length)
+            return callback(new Error('Could not resolve hostname'), '', 0);
+        for (const { address } of addresses) {
+            if (isPrivateHost(address)) {
+                return callback(new Error('Private or internal address blocked'), '', 0);
+            }
+        }
+        const first = addresses[0];
+        callback(null, first.address, first.family);
+    });
+}
+export const safeHttpAgent = new http.Agent({ lookup: safeLookup });
+export const safeHttpsAgent = new https.Agent({ lookup: safeLookup });

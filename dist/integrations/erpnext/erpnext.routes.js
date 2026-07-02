@@ -3,11 +3,20 @@ import { connectERPNext } from './erpnext.service';
 import { syncItemsFromERPNext } from './item-sync.service';
 import { requireAuth, requireBotAccess, requireBotRole } from '../../platform/auth/auth.middleware';
 import { validateExternalUrlAsync, validateSlug } from '../../lib/validate-url';
+const connectBodySchema = {
+    type: 'object',
+    required: ['erpnextUrl', 'apiKey', 'apiSecret'],
+    properties: {
+        erpnextUrl: { type: 'string', pattern: '^https?://', minLength: 8 },
+        apiKey: { type: 'string', minLength: 1 },
+        apiSecret: { type: 'string', minLength: 1 },
+    },
+};
 export default async function (app) {
-    app.post('/platform/bots/:slug/erpnext/connect', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
+    app.post('/platform/bots/:slug/erpnext/connect', { schema: { body: connectBodySchema }, preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
         const { slug } = req.params;
-        const { erpnextUrl, apiKey, apiSecret } = req.body;
-        const urlCheck = await validateExternalUrlAsync(erpnextUrl);
+        const { erpnextUrl: rawErpnextUrl, apiKey, apiSecret } = req.body;
+        const urlCheck = await validateExternalUrlAsync(rawErpnextUrl);
         if (!urlCheck.valid) {
             return reply.status(400).send({ error: urlCheck.reason });
         }

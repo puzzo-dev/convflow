@@ -19,7 +19,7 @@ export default async function conversationRoutes(app) {
             take: 50,
             select: { phone: true },
         });
-        reply.send({ phones: recentPhones.map(r => r.phone) });
+        reply.send({ phones: recentPhones.map((r) => r.phone) });
     });
     // ─────────────────────────────────────────────────────────────────────────────
     // GET /platform/bots/:slug/conversations/:phone — full thread for one number
@@ -38,7 +38,7 @@ export default async function conversationRoutes(app) {
             }),
         ]);
         // Expose messageText as 'message' so the frontend API contract is consistent
-        const thread = rawThread.map(r => ({
+        const thread = rawThread.map((r) => ({
             id: r.id,
             phone: r.phone,
             direction: r.direction,

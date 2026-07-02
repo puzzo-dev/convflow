@@ -12,6 +12,7 @@ import {
   type CellContext,
   type Header,
   type HeaderGroup,
+  type ColumnDef,
 } from '@tanstack/react-table';
 import { Download, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -64,7 +65,7 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
 
   const onFilterChange = (v: string) => { setFilter(v); setPage(1); };
 
-  const columns = useMemo(() => [
+  const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
     columnHelper.accessor('name', {
       header: 'Name',
       cell: (info: CellContext<Lead, string | null>) => <span className="font-medium">{info.getValue() ?? '—'}</span>,
@@ -214,7 +215,7 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
             <thead>
               {table.getHeaderGroups().map((hg: HeaderGroup<Lead>) => (
                 <tr key={hg.id}>
-                  {hg.headers.map(header => (
+                  {hg.headers.map((header: Header<Lead, unknown>) => (
                     <th
                       key={header.id}
                       onClick={header.column.getToggleSortingHandler()}

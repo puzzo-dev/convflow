@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import { redis } from '../../store/redis';
-import { validateExternalUrlAsync } from '../../lib/validate-url';
+import { validateExternalUrlAsync, safeHttpAgent, safeHttpsAgent } from '../../lib/validate-url';
 const ITEM_CACHE_TTL = 60 * 30; // 30 minutes
 export async function syncItemsFromERPNext(companySlug) {
     // Prisma — type-safe, no raw SQL
@@ -32,6 +32,9 @@ export async function syncItemsFromERPNext(companySlug) {
         },
         headers: { Authorization: authHeader },
         timeout: 15_000,
+        maxRedirects: 0,
+        httpAgent: safeHttpAgent,
+        httpsAgent: safeHttpsAgent,
     });
     const items = res.data.data ?? [];
     if (!items.length)
