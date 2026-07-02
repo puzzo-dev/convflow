@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '@/lib/api';
-import { Save, AlertCircle, CheckCircle, Power } from 'lucide-react';
+import { Save, AlertCircle, CheckCircle, Power, Users, Trash2, Plus, X, Loader2 } from 'lucide-react';
 
 const fetcher = (url: string) => apiFetch(url);
 

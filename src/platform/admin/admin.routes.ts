@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../../store/prisma';
 import { requireAuth, requireAdmin } from '../auth/auth.middleware';
 import { hashPassword } from '../auth/auth.service';
+import { getActiveSessions } from '../../store/redis';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -12,6 +13,71 @@ function slugify(base: string): string {
 }
 
 export default async function adminRoutes(app: FastifyInstance) {
+  // GET /platform/admin/analytics — system-wide stats, live activity, charts
+  app.get('/platform/admin/analytics', { preHandler: [requireAuth, requireAdmin] }, async (_req, reply) => {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      totalLeads, totalOrders, hotLeads, totalConversations,
+      orgCount, botCount, activeBotRows, userCount,
+      byClassRaw, active,
+    ] = await Promise.all([
+      prisma.lead.count(),
+      prisma.lead.count({ where: { classification: 'order' } }),
+      prisma.lead.count({ where: { classification: 'hot' } }),
+      prisma.conversation.count(),
+      prisma.organization.count(),
+      prisma.tenant.count(),
+      prisma.tenant.findMany({ where: { active: true }, select: { slug: true } }),
+      prisma.user.count(),
+      prisma.lead.groupBy({ by: ['classification'], _count: { _all: true } }),
+      getActiveSessions().catch(() => ({ total: 0, byCompany: {} as Record<string, number> })),
+    ]);
+
+    const byClassification: Record<string, number> = {};
+    for (const r of byClassRaw) byClassification[r.classification ?? 'unknown'] = r._count._all;
+
+    // Daily volume for the last 30 days (leads + conversations), aggregated in DB.
+    const leadsDaily = await prisma.$queryRaw<{ day: string; cnt: bigint }[]>`
+      SELECT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, COUNT(*) AS cnt
+      FROM leads WHERE created_at >= ${since} GROUP BY day ORDER BY day ASC`;
+    const convDaily = await prisma.$queryRaw<{ day: string; cnt: bigint }[]>`
+      SELECT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, COUNT(*) AS cnt
+      FROM conversations WHERE created_at >= ${since} GROUP BY day ORDER BY day ASC`;
+
+    const dayMap: Record<string, { date: string; leads: number; conversations: number }> = {};
+    for (const r of leadsDaily) (dayMap[r.day] ??= { date: r.day, leads: 0, conversations: 0 }).leads = Number(r.cnt);
+    for (const r of convDaily)  (dayMap[r.day] ??= { date: r.day, leads: 0, conversations: 0 }).conversations = Number(r.cnt);
+    const dailyVolume = Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Top bots by lead count.
+    const topRaw = await prisma.lead.groupBy({
+      by: ['companySlug'], _count: { _all: true },
+      orderBy: { _count: { companySlug: 'desc' } }, take: 8,
+    });
+    const nameMap = Object.fromEntries(
+      (await prisma.tenant.findMany({ select: { slug: true, name: true } })).map(t => [t.slug, t.name]),
+    );
+    const topBots = topRaw.map(r => ({ slug: r.companySlug, name: nameMap[r.companySlug] ?? r.companySlug, leads: r._count._all }));
+
+    // A bot is "live" if it has at least one active conversation session right now.
+    const liveBotSlugs = Object.keys(active.byCompany);
+
+    reply.send({
+      stats: {
+        orgCount, userCount, botCount, activeBots: activeBotRows.length,
+        totalLeads, totalOrders, hotLeads, totalConversations,
+        activeCustomers: active.total,          // customers currently mid-conversation
+        liveBots: liveBotSlugs.length,          // bots with a customer active right now
+        byClassification,
+      },
+      dailyVolume,
+      topBots,
+      liveByBot: liveBotSlugs.map(slug => ({ slug, name: nameMap[slug] ?? slug, active: active.byCompany[slug] }))
+                   .sort((a, b) => b.active - a.active),
+    });
+  });
+
   // POST /platform/admin/users — create a user account
   app.post('/platform/admin/users', { preHandler: [requireAuth, requireAdmin] }, async (req, reply) => {
     const { name, email, password, role } = req.body as any;

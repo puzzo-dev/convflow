@@ -19,6 +19,25 @@ export async function clearState(phone: string, companySlug: string): Promise<vo
   await redis.del(`state:${companySlug}:${phone}`);
 }
 
+// Live activity: count active conversation states (customers currently mid-flow,
+// within the 24h TTL), grouped by bot. Uses SCAN so it never blocks Redis.
+export async function getActiveSessions(): Promise<{ total: number; byCompany: Record<string, number> }> {
+  const byCompany: Record<string, number> = {};
+  let total = 0;
+  let cursor = '0';
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', 'state:*', 'COUNT', 500);
+    cursor = next;
+    for (const key of keys) {
+      const slug = key.split(':')[1]; // state:{companySlug}:{phone}
+      if (!slug) continue;
+      byCompany[slug] = (byCompany[slug] ?? 0) + 1;
+      total++;
+    }
+  } while (cursor !== '0');
+  return { total, byCompany };
+}
+
 export async function getItemsFromCache(companySlug: string, itemGroup?: string): Promise<any[]> {
   try {
     const raw = await redis.get(`items:${companySlug}`);
