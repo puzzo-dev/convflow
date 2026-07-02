@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../store/prisma';
 import { requireAuth, requireBotAccess, requireBotRole } from '../auth/auth.middleware';
-import { getPrimaryOrgId } from '../auth/roles';
+import { getPrimaryOrgId, roleSatisfies } from '../auth/roles';
 import { refreshTenantCache } from '../../engine/tenant-router';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -165,6 +165,16 @@ export default async function botRoutes(app: FastifyInstance) {
           ? 'Select an organization to assign this bot to.'
           : 'You must belong to an organization to create a bot.',
       });
+    }
+
+    // Only org owners/admins may create bots (super admins bypass this).
+    if (user.role !== 'super_admin') {
+      const m = await prisma.organizationMembership.findUnique({
+        where: { userId_orgId: { userId: user.userId, orgId } }, select: { role: true },
+      });
+      if (!roleSatisfies(m?.role ?? null, ['admin'])) {
+        return reply.status(403).send({ error: 'Only organization owners and admins can create bots.' });
+      }
     }
 
     const tenant = await prisma.tenant.create({

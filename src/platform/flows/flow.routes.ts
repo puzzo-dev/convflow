@@ -24,7 +24,7 @@ export default async function flowRoutes(app: FastifyInstance) {
   });
 
   // PUT /platform/bots/:slug/flows
-  app.put('/platform/bots/:slug/flows', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
+  app.put('/platform/bots/:slug/flows', { preHandler: [requireAuth, requireBotRole(['owner', 'admin', 'member'])] }, async (req, reply) => {
     const { slug } = req.params as any;
     const body = req.body as { flows: FlowStage[]; scoring?: ScoringRule[]; messages?: CompanyConfig['messages'] };
 

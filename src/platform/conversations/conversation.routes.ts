@@ -71,7 +71,7 @@ export default async function conversationRoutes(app: FastifyInstance) {
   // Agent clicks "Resume Bot" in dashboard → flips Redis state back to 'bot'
   // and re-sends the last bot prompt to the customer
   // ─────────────────────────────────────────────────────────────────────────────
-  app.post('/platform/bots/:slug/conversations/:phone/resume', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
+  app.post('/platform/bots/:slug/conversations/:phone/resume', { preHandler: [requireAuth, requireBotRole(['owner', 'admin', 'member'])] }, async (req, reply) => {
     const { slug } = req.params as any;
     const phone = normalizePhone((req.params as any).phone);
 

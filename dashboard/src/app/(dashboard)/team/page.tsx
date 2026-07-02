@@ -144,6 +144,9 @@ export default function TeamPage() {
 function InviteModal({ assignable, onClose, onDone }: { assignable: string[]; onClose: () => void; onDone: () => void }) {
   const [email, setEmail] = useState('');
   const [role, setRole]   = useState('member');
+  const [createNew, setCreateNew] = useState(false);
+  const [name, setName]   = useState('');
+  const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -151,7 +154,9 @@ function InviteModal({ assignable, onClose, onDone }: { assignable: string[]; on
     e.preventDefault();
     setSaving(true); setError('');
     try {
-      await apiFetch('/platform/org/members', { method: 'POST', body: JSON.stringify({ email, role }) });
+      const body: any = { email, role };
+      if (createNew) { body.name = name; body.password = password; }
+      await apiFetch('/platform/org/members', { method: 'POST', body: JSON.stringify(body) });
       onDone();
     } catch (err: any) {
       setError(err.message ?? 'Failed to add member');
@@ -162,10 +167,10 @@ function InviteModal({ assignable, onClose, onDone }: { assignable: string[]; on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
-      <div className="glass-panel w-full max-w-md p-8 relative" onClick={e => e.stopPropagation()}>
+      <div className="glass-panel w-full max-w-md p-8 relative max-h-[90vh] overflow-y-auto no-scrollbar" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 text-muted hover:text-primary"><X size={18} /></button>
         <h2 className="text-xl font-bold mb-1">Add Member</h2>
-        <p className="text-secondary text-sm mb-6">Add an existing ConvFlow user to your organization by email.</p>
+        <p className="text-secondary text-sm mb-6">Add an existing user by email, or create a new account for them.</p>
 
         {error && <div className="mb-4 px-4 py-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm flex items-center gap-2"><AlertCircle size={16} /> {error}</div>}
 
@@ -173,8 +178,26 @@ function InviteModal({ assignable, onClose, onDone }: { assignable: string[]; on
           <div>
             <label className="label">Email</label>
             <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)} placeholder="teammate@company.com" required />
-            <p className="text-[10px] text-muted mt-1">They must already have a ConvFlow account.</p>
           </div>
+
+          <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer">
+            <input type="checkbox" checked={createNew} onChange={e => setCreateNew(e.target.checked)} />
+            This person doesn’t have an account yet — create one
+          </label>
+
+          {createNew && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Full Name</label>
+                <input className="input" value={name} onChange={e => setName(e.target.value)} required={createNew} />
+              </div>
+              <div>
+                <label className="label">Temp Password</label>
+                <input type="text" className="input" value={password} onChange={e => setPassword(e.target.value)} minLength={8} placeholder="min 8 chars" required={createNew} />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="label">Role</label>
             <select className="input" value={role} onChange={e => setRole(e.target.value)}>
@@ -182,7 +205,7 @@ function InviteModal({ assignable, onClose, onDone }: { assignable: string[]; on
             </select>
           </div>
           <button type="submit" className="btn btn-primary mt-1" disabled={saving}>
-            {saving ? <><Loader2 size={16} className="animate-spin" /> Adding...</> : 'Add Member'}
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Adding...</> : createNew ? 'Create & Add' : 'Add Member'}
           </button>
         </form>
       </div>
