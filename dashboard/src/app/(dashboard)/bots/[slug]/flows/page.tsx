@@ -225,7 +225,7 @@ function NodeEditorPanel({ node, slug, onChange, onDelete, onClose }: {
         <button onClick={onClose} className="text-muted hover:text-white transition-colors"><X size={15} /></button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col gap-4">
 
         {node.type !== 'terminalNode' && (
           <div>

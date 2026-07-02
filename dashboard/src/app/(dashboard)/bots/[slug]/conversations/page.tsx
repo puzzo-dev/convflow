@@ -72,7 +72,7 @@ export default function ConversationsPage({ params }: { params: Promise<{ slug: 
               />
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto no-scrollbar">
             {filteredPhones.length === 0 ? (
               <div className="p-6 text-center text-muted text-sm">No conversations yet</div>
             ) : (
@@ -130,7 +130,7 @@ export default function ConversationsPage({ params }: { params: Promise<{ slug: 
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+              <div className="flex-1 overflow-y-auto no-scrollbar p-5 flex flex-col gap-4">
                 {thread.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-muted text-sm">
                     No messages yet

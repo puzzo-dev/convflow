@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import useSWR, { mutate } from 'swr';
-import { Shield, Loader2, UserX, UserCheck, ShieldCheck, ShieldOff, Pencil, X } from 'lucide-react';
+import { Shield, Loader2, UserX, UserCheck, ShieldCheck, ShieldOff, Pencil, X, Plus } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 const USERS_URL = '/platform/admin/users';
@@ -13,6 +13,7 @@ export default function AdminUsersPage() {
   const { data, isLoading } = useSWR(USERS_URL, fetcher);
   const users: AdminUser[] = data?.users ?? [];
   const [editing, setEditing] = useState<AdminUser | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const toggleRole = async (u: AdminUser) => {
     await apiFetch(`${USERS_URL}/${u.id}/role`, { method: 'PATCH', body: JSON.stringify({ role: u.role === 'super_admin' ? 'member' : 'super_admin' }) });
@@ -27,9 +28,14 @@ export default function AdminUsersPage() {
 
   return (
     <>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold flex items-center gap-3"><Shield size={28} className="text-accent" /> All Users</h1>
-        <p className="text-secondary mt-2">Super-admin view of all dashboard users.</p>
+      <div className="flex justify-between items-end mb-8">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-3"><Shield size={28} className="text-accent" /> All Users</h1>
+          <p className="text-secondary mt-2">Super-admin view of all dashboard users.</p>
+        </div>
+        <button onClick={() => setCreating(true)} className="btn btn-primary flex items-center gap-2">
+          <Plus size={17} /> Create User
+        </button>
       </div>
 
       <div className="glass-panel overflow-hidden">
@@ -93,7 +99,66 @@ export default function AdminUsersPage() {
           }}
         />
       )}
+
+      {creating && (
+        <CreateUserModal onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); await mutate(USERS_URL); }} />
+      )}
     </>
+  );
+}
+
+function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'member' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try {
+      await apiFetch('/platform/admin/users', { method: 'POST', body: JSON.stringify(form) });
+      onCreated();
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to create user');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div className="glass-panel w-full max-w-lg p-8 relative" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-muted hover:text-primary"><X size={18} /></button>
+        <h2 className="text-xl font-bold mb-6">Create User</h2>
+        {error && <div className="mb-4 px-4 py-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">{error}</div>}
+        <form onSubmit={submit} className="flex flex-col gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Full Name</label>
+              <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+            </div>
+            <div>
+              <label className="label">Platform Role</label>
+              <select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                <option value="member">Member</option>
+                <option value="super_admin">Super Admin</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="label">Email</label>
+            <input type="email" className="input" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} required />
+          </div>
+          <div>
+            <label className="label">Temporary Password</label>
+            <input type="text" className="input" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} minLength={8} placeholder="min 8 characters" required />
+          </div>
+          <button type="submit" className="btn btn-primary mt-1" disabled={saving}>
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : 'Create User'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
 

@@ -70,13 +70,16 @@
   .badge {
     @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
   }
+}
 
-  /* Scrollable but with no visible scrollbar. */
-  .no-scrollbar {
-    -ms-overflow-style: none;   /* IE / old Edge */
-    scrollbar-width: none;      /* Firefox */
-  }
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;              /* Chrome / Safari / WebKit */
-  }
+/* Scrollable but with no visible scrollbar. Kept OUTSIDE @layer so the
+   ::-webkit-scrollbar pseudo is always emitted (Tailwind v4 can drop it inside a layer). */
+.no-scrollbar {
+  -ms-overflow-style: none;   /* IE / old Edge */
+  scrollbar-width: none;      /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;   /* Chrome / Safari / WebKit */
 }

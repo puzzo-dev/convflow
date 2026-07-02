@@ -1,9 +1,12 @@
 import { FastifyInstance } from 'fastify';
+import crypto from 'crypto';
 import { prisma } from '../../store/prisma';
 import { requireAuth } from '../auth/auth.middleware';
 import { getPrimaryOrgId, rankOf, roleSatisfies } from '../auth/roles';
+import { hashPassword } from '../auth/auth.service';
 
 const ASSIGNABLE = ['owner', 'admin', 'member', 'viewer'];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Resolve the caller's primary org + their role in it.
 async function callerOrg(userId: string): Promise<{ orgId: string; role: string } | null> {
@@ -59,19 +62,36 @@ export default async function orgRoutes(app: FastifyInstance) {
     reply.send({ members, role: ctx.role });
   });
 
-  // Invite (add an existing user by email) to the caller's org.
+  // Add a member to the caller's org. If the email has no account yet and
+  // name+password are supplied, a new user is created (tenant-level provisioning).
   app.post('/platform/org/members', { preHandler: [requireAuth] }, async (req, reply) => {
     const { userId } = (req as any).user;
-    const { email, role } = req.body as any;
+    const { email, role, name, password } = req.body as any;
     const ctx = await callerOrg(userId);
     if (!ctx) return reply.status(400).send({ error: 'You are not in an organization.' });
     if (!roleSatisfies(ctx.role, ['admin'])) return reply.status(403).send({ error: 'Only owners and admins can add members.' });
     if (!ASSIGNABLE.includes(role)) return reply.status(400).send({ error: 'Invalid role' });
-    // Only an owner may grant the owner role.
     if (role === 'owner' && ctx.role !== 'owner') return reply.status(403).send({ error: 'Only an owner can assign the owner role.' });
+    if (typeof email !== 'string' || !EMAIL_RE.test(email)) return reply.status(400).send({ error: 'A valid email is required' });
 
-    const invitee = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() }, select: { id: true } });
-    if (!invitee) return reply.status(404).send({ error: 'No user with that email. Ask them to register first.' });
+    let invitee = await prisma.user.findUnique({ where: { email: email.toLowerCase() }, select: { id: true } });
+
+    // Create the account if it doesn't exist and credentials were provided.
+    if (!invitee) {
+      if (!name || !password) {
+        return reply.status(404).send({ error: 'No user with that email. Provide a name and password to create their account.' });
+      }
+      if (String(password).length < 8) return reply.status(400).send({ error: 'password must be at least 8 characters' });
+      invitee = await prisma.user.create({
+        data: {
+          name: String(name).trim(), email: email.toLowerCase(),
+          passwordHash: await hashPassword(String(password)),
+          apiKey: `cf_${crypto.randomBytes(30).toString('hex')}`,
+          role: 'member',
+        },
+        select: { id: true },
+      });
+    }
 
     await prisma.organizationMembership.upsert({
       where:  { userId_orgId: { userId: invitee.id, orgId: ctx.orgId } },

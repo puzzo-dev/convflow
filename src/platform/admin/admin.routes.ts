@@ -1,8 +1,63 @@
 import { FastifyInstance } from 'fastify';
+import crypto from 'crypto';
 import { prisma } from '../../store/prisma';
 import { requireAuth, requireAdmin } from '../auth/auth.middleware';
+import { hashPassword } from '../auth/auth.service';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function slugify(base: string): string {
+  return base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
+    + '-' + crypto.randomBytes(2).toString('hex');
+}
 
 export default async function adminRoutes(app: FastifyInstance) {
+  // POST /platform/admin/users — create a user account
+  app.post('/platform/admin/users', { preHandler: [requireAuth, requireAdmin] }, async (req, reply) => {
+    const { name, email, password, role } = req.body as any;
+    if (typeof name !== 'string' || !name.trim())        return reply.status(400).send({ error: 'name is required' });
+    if (typeof email !== 'string' || !EMAIL_RE.test(email)) return reply.status(400).send({ error: 'A valid email is required' });
+    if (typeof password !== 'string' || password.length < 8) return reply.status(400).send({ error: 'password must be at least 8 characters' });
+    if (Buffer.byteLength(password, 'utf8') > 72)        return reply.status(400).send({ error: 'password must not exceed 72 bytes' });
+    const platformRole = role === 'super_admin' ? 'super_admin' : 'member';
+
+    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (existing) return reply.status(400).send({ error: 'Email already registered' });
+
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(), email: email.toLowerCase(),
+        passwordHash: await hashPassword(password),
+        apiKey: `cf_${crypto.randomBytes(30).toString('hex')}`,
+        role: platformRole,
+      },
+      select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+    });
+    reply.status(201).send({ user });
+  });
+
+  // POST /platform/admin/organizations — create an org, optionally with an owner
+  app.post('/platform/admin/organizations', { preHandler: [requireAuth, requireAdmin] }, async (req, reply) => {
+    const { name, ownerEmail } = req.body as any;
+    if (typeof name !== 'string' || !name.trim()) return reply.status(400).send({ error: 'name is required' });
+
+    let ownerId: string | null = null;
+    if (ownerEmail) {
+      const owner = await prisma.user.findUnique({ where: { email: String(ownerEmail).toLowerCase() }, select: { id: true } });
+      if (!owner) return reply.status(404).send({ error: 'No user with that owner email. Create the user first.' });
+      ownerId = owner.id;
+    }
+
+    const org = await prisma.organization.create({
+      data: {
+        name: name.trim(), slug: slugify(name),
+        ...(ownerId ? { memberships: { create: { userId: ownerId, role: 'owner' } } } : {}),
+      },
+      select: { id: true, name: true, slug: true, createdAt: true },
+    });
+    reply.status(201).send({ organization: org });
+  });
+
   // GET /platform/admin/users — all users with their bot count
   app.get('/platform/admin/users', { preHandler: [requireAuth, requireAdmin] }, async (_req, reply) => {
     const users = await prisma.user.findMany({

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import useSWR from 'swr';
-import { Activity, Zap, Bot } from 'lucide-react';
+import { Activity, Zap, Bot, Users, MessageSquare, Flame, ShoppingCart, Inbox } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,23 @@ import { apiFetch } from '@/lib/api';
 interface BotSummary { slug: string; name: string; active: boolean; openwaSessionId: string; createdAt: string; }
 
 const fetcher = (url: string) => apiFetch(url);
+
+const CLASS_COLOR: Record<string, string> = {
+  hot: '#f87171', warm: '#fbbf24', nurture: '#e2603f', cold: '#6b6b74', order: '#4ade80',
+};
+
+function Stat({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string }) {
+  return (
+    <div className="glass-panel p-6 flex flex-col gap-3">
+      <div className="flex justify-between items-center">
+        <span className="text-sm font-medium text-secondary">{label}</span>
+        {icon}
+      </div>
+      <div className="text-4xl font-bold">{value}</div>
+      {sub && <div className="text-xs text-muted">{sub}</div>}
+    </div>
+  );
+}
 
 export default function DashboardOverview() {
   const { data: session } = useSession();
@@ -22,7 +39,11 @@ export default function DashboardOverview() {
   }, [role, router]);
 
   const { data: botsData, error, isLoading } = useSWR('/platform/bots', fetcher, { refreshInterval: 30_000 });
+  const { data: ovData } = useSWR('/platform/overview', fetcher, { refreshInterval: 30_000 });
   const bots: BotSummary[] = botsData?.bots ?? [];
+  const s = ovData?.stats ?? {};
+  const byClass: Record<string, number> = s.byClassification ?? {};
+  const classTotal = Object.values(byClass).reduce((a: number, b: number) => a + b, 0);
 
   return (
     <>
@@ -35,6 +56,39 @@ export default function DashboardOverview() {
           <Zap size={18} />
           Manage Bots
         </Link>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+        <Stat icon={<Bot size={20} className="text-accent" />}            label="Bots"          value={s.botCount ?? 0}          sub={`${s.activeBots ?? 0} active`} />
+        <Stat icon={<Users size={20} className="text-accent-secondary" />} label="Total Leads"   value={s.totalLeads ?? 0}        sub={`${s.hotLeads ?? 0} hot`} />
+        <Stat icon={<ShoppingCart size={20} className="text-success" />}   label="Orders"        value={s.orders ?? 0}            sub="completed orders" />
+        <Stat icon={<MessageSquare size={20} className="text-warning" />}  label="Conversations" value={s.totalConversations ?? 0} sub={`${s.recentInbound7d ?? 0} inbound (7d)`} />
+      </div>
+
+      {/* Lead classification breakdown */}
+      <div className="glass-panel p-6 mb-6">
+        <h3 className="font-semibold text-base mb-4 flex items-center gap-2"><Flame size={16} className="text-accent" /> Lead Breakdown</h3>
+        {classTotal === 0 ? (
+          <div className="text-sm text-muted py-4 flex items-center gap-2"><Inbox size={16} /> No leads captured yet.</div>
+        ) : (
+          <>
+            <div className="flex h-3 rounded-full overflow-hidden mb-4">
+              {Object.entries(byClass).map(([k, v]) => (
+                <div key={k} style={{ width: `${(v / classTotal) * 100}%`, background: CLASS_COLOR[k] ?? '#6b6b74' }} title={`${k}: ${v}`} />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-4">
+              {Object.entries(byClass).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: CLASS_COLOR[k] ?? '#6b6b74' }} />
+                  <span className="text-secondary capitalize">{k}</span>
+                  <span className="text-muted">{v}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="glass-panel p-6">
