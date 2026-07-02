@@ -33,9 +33,9 @@ async function runNotify(
   const tenant = await prisma.tenant.findUnique({ where: { slug: company.slug }, select: { id: true } });
   const membership = tenant
     ? await prisma.tenantMembership.findFirst({
-        where:   { tenantId: tenant.id, role: 'owner' },
-        include: { user: { select: { id: true, email: true } } },
-      })
+      where: { tenantId: tenant.id, role: 'owner' },
+      include: { user: { select: { id: true, email: true } } },
+    })
     : null;
 
   // No owner user on record — fall back to the legacy direct-WhatsApp path.
@@ -45,11 +45,11 @@ async function runNotify(
   }
 
   await notify({
-    userId:   membership.userId,
+    userId: membership.userId,
     channels,
-    message:  buildSummary(state, phone, company),
-    subject:  `New notification — ${company.name}`,
-    targets:  { whatsapp: company.ownerPhone, sms: company.ownerPhone, email: membership.user.email },
+    message: buildSummary(state, phone, company),
+    subject: `New notification — ${company.name}`,
+    targets: { whatsapp: company.ownerPhone, sms: company.ownerPhone, email: membership.user.email },
   });
 }
 
@@ -86,7 +86,7 @@ async function runHttpRequest(
   // Lock the origin to whatever the tenant admin configured; user answers can only
   // fill path/query segments and are URL-encoded so they cannot escape the host.
   const allowedOrigin = getUrlTemplateOrigin(action.url);
-  const url           = interpUrl(action.url, state, phone);
+  const url = interpUrl(action.url, state, phone);
 
   // Custom body (token-interpolated values) or the standard lead payload.
   let body: string | undefined;
@@ -106,7 +106,7 @@ async function runHttpRequest(
 
   // Optionally capture part of the response back into the conversation answers.
   if (action.saveResponseTo) {
-    const json  = await res.json().catch(() => null);
+    const json = await res.json().catch(() => null);
     const value = action.responsePath ? pluck(json, action.responsePath) : json;
     state.answers[action.saveResponseTo] =
       typeof value === 'string' ? value : JSON.stringify(value ?? '');
@@ -139,7 +139,7 @@ async function runAction(
 function isBlocking(a: NodeAction): boolean {
   return !!a.blocking
     || (a.type === 'http_request' && !!a.saveResponseTo)
-    || (a.type === 'plugin'       && !!a.saveResponseTo);
+    || (a.type === 'plugin' && !!a.saveResponseTo);
 }
 
 /**
