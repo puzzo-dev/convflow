@@ -1,0 +1,47 @@
+{
+  "name": "convflow",
+  "version": "1.0.0",
+  "description": "ConvFlow — Multi-tenant WhatsApp workflow engine by IVarse Technologies",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n \"api,web\" -c \"cyan,magenta\" --kill-others-on-fail \"tsx watch src/server.ts\" \"cd dashboard && pnpm dev --port 3009\"",
+    "dev:api": "tsx watch src/server.ts",
+    "dev:web": "cd dashboard && pnpm dev --port 3009",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "migrate": "npx prisma migrate deploy",
+    "db:generate": "npx prisma generate",
+    "db:studio": "npx prisma studio",
+    "validate-config": "tsx scripts/validate-configs.ts",
+    "seed:admin": "tsx scripts/seed-admin.ts"
+  },
+  "keywords": [],
+  "author": "IVarse Technologies",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@types/pg": "^8.20.0",
+    "axios": "^1.9.0",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.5",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^26.0.1",
+    "@types/nodemailer": "^8.0.1",
+    "concurrently": "^10.0.3",
+    "nodemon": "^3.1.14",
+    "prisma": "^7.8.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.8.3"
+  }
+}

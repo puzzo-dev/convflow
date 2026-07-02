@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Neutrals (flat, true-neutral with a faint warm cast) ─────────────── */
+  --color-base: #0a0a0a;          /* page background */
+  --color-surface: #141414;       /* panels — solid, no transparency */
+  --color-surface-hover: #1c1c1c;
+  --color-input: #111111;
+
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --color-primary: #fafafa;
+  --color-secondary: #a1a1aa;
+  --color-muted: #6b6b74;
+
+  /* ── Accent: terracotta (the only brand color) ────────────────────────── */
+  --color-accent: #e2603f;
+  --color-accent-hover: #c94f30;
+  --color-accent-secondary: #c9a27a;  /* warm sand — used sparingly for 2nd chart series */
+
+  /* ── Semantic ─────────────────────────────────────────────────────────── */
+  --color-danger: #f87171;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+
+  /* ── Lines ────────────────────────────────────────────────────────────── */
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-border-focus: rgba(226, 96, 63, 0.55);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@layer base {
+  body {
+    /* Flat matte — no radial-gradient glow. */
+    @apply bg-base text-primary font-sans antialiased min-h-screen;
+  }
+}
+
+@layer components {
+  /* Flat panel — solid surface + crisp hairline border, no backdrop blur. */
+  .glass-panel {
+    @apply bg-surface border border-white/[0.08] rounded-xl;
+  }
+
+  .input {
+    @apply w-full bg-input border border-white/10 text-primary px-4 py-3 rounded-md font-sans text-sm outline-none transition-colors duration-150 focus:border-accent focus:ring-2 focus:ring-border-focus;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-secondary mb-2;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-md font-semibold text-sm cursor-pointer transition-colors duration-150;
+  }
+
+  /* No glow shadows — flat fill, darken on hover. */
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-accent-hover;
+  }
+
+  .btn-secondary {
+    @apply bg-transparent text-primary border border-white/10 hover:bg-surface-hover hover:border-white/20;
+  }
+
+  .btn-danger {
+    @apply bg-danger/10 text-danger border border-danger/20 hover:bg-danger/20;
+  }
+
+  .badge {
+    @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
+  }
+}

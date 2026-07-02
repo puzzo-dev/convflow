@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // URL provided via prisma.config.ts (Prisma v7+)
+}
+
+// ── Identity: one row per human who logs into the dashboard ──────────────────
+model User {
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String             @unique @db.VarChar(200)
+  passwordHash String             @map("password_hash") @db.VarChar(255)
+  name         String             @db.VarChar(120)
+  role         String             @default("member") @db.VarChar(20)   // member | super_admin
+  apiKey       String             @unique @map("api_key") @db.VarChar(64)
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at")
+
+  memberships    TenantMembership[]
+  orgMemberships OrganizationMembership[]
+  channels       NotificationChannel[]
+
+  @@map("users")
+}
+
+// ── Organizations: the tenant/business. Owns bots and has many users by role ──
+model Organization {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(120)
+  slug      String   @unique @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  memberships OrganizationMembership[]
+  bots        Tenant[]
+
+  @@map("organizations")
+}
+
+// Org-wide role (the baseline; per-bot TenantMembership can raise it).
+model OrganizationMembership {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  role      String   @default("member") @db.VarChar(20)  // owner | admin | member | viewer
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@map("organization_memberships")
+}
+
+// ── Plugins: runtime-installed connector manifests (global) ───────────────────
+model Plugin {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pluginId  String   @unique @map("plugin_id") @db.VarChar(80)  // manifest id, e.g. 'shopify'
+  name      String   @db.VarChar(120)
+  version   String   @default("1.0.0") @db.VarChar(20)
+  manifest  Json                                                 // full declarative manifest
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("plugins")
+}
+
+// ── Notifications: per-user delivery channels (creds encrypted at rest) ────────
+model NotificationChannel {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  kind        String   @db.VarChar(20)   // email | whatsapp | sms
+  provider    String   @db.VarChar(20)   // smtp | meta | openwa | twilio
+  label       String?  @db.VarChar(120)
+  credentials String   @map("credentials")  // AES-GCM encrypted JSON blob
+  target      String?  @db.VarChar(200)   // default destination (email / phone) for alerts
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notification_channels")
+}
+
+// ── Authorization: which users can access which bots, and at what level ───────
+model TenantMembership {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  role      String   @default("owner") @db.VarChar(20)  // owner | admin | viewer
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("tenant_memberships")
+}
+
+// ── Core: Tenant registry (one row per bot/company) ───────────────────────────
+model Tenant {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug            String             @unique @db.VarChar(80)
+  name            String             @db.VarChar(120)
+  openwaSessionId String             @unique @map("openwa_session_id") @db.VarChar(80)
+  ownerPhone      String             @map("owner_phone") @db.VarChar(20)
+  configJson      Json               @map("config_json")
+  active          Boolean            @default(true)
+  organizationId  String?            @map("organization_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @default(now()) @updatedAt @map("updated_at")
+
+  organization    Organization?      @relation(fields: [organizationId], references: [id])
+  memberships     TenantMembership[]
+
+  @@index([organizationId])
+  @@map("tenants")
+}
+
+// ── Core: Leads (all companies in one table) ──────────────────────────────────
+model Lead {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companySlug    String    @map("company_slug") @db.VarChar(80)
+  phone          String    @db.VarChar(20)
+  name           String?   @db.VarChar(120)
+  answers        Json      @default("{}")
+  leadScore      Int?      @default(0) @map("lead_score")
+  classification String?   @db.VarChar(20)
+  source         String?   @db.VarChar(50)
+  routedAt       DateTime? @map("routed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([companySlug])
+  @@index([companySlug, phone])
+  @@index([companySlug, classification])
+  @@map("leads")
+}
+
+// ── Platform: ERPNext connection config (optional, per bot) ───────────────────
+model ErpnextConnection {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companySlug  String    @unique @map("company_slug") @db.VarChar(80)
+  erpnextUrl   String    @map("erpnext_url") @db.VarChar(255)
+  apiKey       String    @map("api_key") @db.VarChar(120)
+  apiSecret    String    @map("api_secret") @db.VarChar(120)
+  connectedAt  DateTime  @default(now()) @map("connected_at")
+  lastSyncAt   DateTime? @map("last_sync_at")
+  status       String    @default("connected") @db.VarChar(20)
+  errorMessage String?   @map("error_message")
+
+  @@map("erpnext_connections")
+}
+
+// ── Platform: Full conversation log ──────────────────────────────────────────
+model Conversation {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companySlug String   @map("company_slug") @db.VarChar(80)
+  phone       String   @db.VarChar(20)
+  direction   String   @db.VarChar(10)
+  messageText String   @map("message_text")
+  stageId     String?  @map("stage_id") @db.VarChar(80)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([companySlug, phone])
+  @@index([companySlug, createdAt(sort: Desc)])
+  @@map("conversations")
+}
+
+// ── Platform: ERPNext item cache (synced on connect + every 30min) ────────────
+model ErpnextItemCache {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companySlug  String   @map("company_slug") @db.VarChar(80)
+  itemCode     String   @map("item_code") @db.VarChar(140)
+  itemName     String   @map("item_name") @db.VarChar(200)
+  itemGroup    String?  @map("item_group") @db.VarChar(100)
+  standardRate Decimal  @default(0) @map("standard_rate") @db.Decimal(12, 2)
+  currency     String   @default("NGN") @db.VarChar(10)
+  description  String?
+  isActive     Boolean  @default(true) @map("is_active")
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  @@unique([companySlug, itemCode])
+  @@index([companySlug, isActive])
+  @@index([companySlug, itemGroup])
+  @@map("erpnext_item_cache")
+}
+
+// ── Platform: Human takeover log ─────────────────────────────────────────────
+model HumanTakeover {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companySlug     String    @map("company_slug") @db.VarChar(80)
+  phone           String    @db.VarChar(20)
+  triggeredAt     DateTime  @default(now()) @map("triggered_at")
+  resumedAt       DateTime? @map("resumed_at")
+  resumedBy       String?   @map("resumed_by") @db.VarChar(120)
+  offFlowMessage  String?   @map("off_flow_message")
+  stageAtTakeover Int?      @map("stage_at_takeover")
+
+  @@index([companySlug, triggeredAt(sort: Desc)])
+  @@map("human_takeovers")
+}
