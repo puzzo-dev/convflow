@@ -10,6 +10,8 @@ import {
   createColumnHelper,
   type SortingState,
   type CellContext,
+  type Header,
+  type HeaderGroup,
 } from '@tanstack/react-table';
 import { Download, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -103,7 +105,7 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
     columnHelper.display({
       id: 'actions',
       header: 'Action',
-      cell: ({ row }) => (
+      cell: ({ row }: CellContext<Lead, unknown>) => (
         <button
           className="btn btn-secondary px-3 py-1 text-xs"
           onClick={() => setSelectedLead(row.original)}
@@ -121,7 +123,7 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
     l.phone.includes(search),
   );
 
-  const table = useReactTable({
+  const table = useReactTable<Lead>({
     data: visibleLeads,
     columns,
     state: { sorting },
@@ -210,7 +212,7 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              {table.getHeaderGroups().map(hg => (
+              {table.getHeaderGroups().map((hg: HeaderGroup<Lead>) => (
                 <tr key={hg.id}>
                   {hg.headers.map(header => (
                     <th
