@@ -27,6 +27,20 @@ export default async function orgRoutes(app: FastifyInstance) {
     reply.send({ org, role: ctx.role });
   });
 
+  // Rename the caller's org (owners and admins).
+  app.patch('/platform/org', { preHandler: [requireAuth] }, async (req, reply) => {
+    const { userId } = (req as any).user;
+    const { name }   = req.body as any;
+    const ctx = await callerOrg(userId);
+    if (!ctx) return reply.status(400).send({ error: 'You are not in an organization.' });
+    if (!roleSatisfies(ctx.role, ['admin'])) return reply.status(403).send({ error: 'Only owners and admins can rename the organization.' });
+    if (typeof name !== 'string' || !name.trim()) return reply.status(400).send({ error: 'name is required' });
+    if (name.length > 120) return reply.status(400).send({ error: 'name must be 120 characters or fewer' });
+
+    const org = await prisma.organization.update({ where: { id: ctx.orgId }, data: { name: name.trim() } });
+    reply.send({ org: { id: org.id, name: org.name, slug: org.slug } });
+  });
+
   // Members of the caller's org.
   app.get('/platform/org/members', { preHandler: [requireAuth] }, async (req, reply) => {
     const { userId } = (req as any).user;

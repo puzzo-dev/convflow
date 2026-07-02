@@ -2,17 +2,21 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '@/lib/api';
-import { User, Key, Shield, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { User, Key, Shield, Clock, AlertCircle, RefreshCw, Building2 } from 'lucide-react';
 
 const fetcher = (url: string) => apiFetch(url);
 
 export default function AccountPage() {
   const { data, isLoading, mutate } = useSWR('/platform/account', fetcher);
+  const { data: orgData } = useSWR('/platform/org', fetcher);
   const [rotating, setRotating] = useState(false);
   const [rotateError, setRotateError] = useState('');
   const [newKey, setNewKey] = useState('');
 
-  const account = data?.account;
+  // Backend returns { user }.
+  const account = data?.user;
+  const org     = orgData?.org;
+  const orgRole = orgData?.role;
 
   const handleRotateKey = async () => {
     if (!confirm('WARNING: Rotating your API key will instantly break any existing integrations using the old key. Are you sure?')) {
@@ -45,11 +49,11 @@ export default function AccountPage() {
       <div className="flex justify-between items-end mb-8">
         <div>
           <h1 className="text-3xl font-bold">Account Profile</h1>
-          <p className="text-secondary mt-2">Manage your tenant account and security credentials.</p>
+          <p className="text-secondary mt-2">Your signed-in profile and API credentials.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Profile Card */}
         <div className="glass-panel p-6 flex flex-col gap-6">
           <div className="flex items-center gap-4">
@@ -71,11 +75,21 @@ export default function AccountPage() {
               <div className="text-sm">{account.email}</div>
             </div>
             <div>
-              <label className="text-xs text-muted font-medium mb-1 block">Role</label>
+              <label className="text-xs text-muted font-medium mb-1 block">Platform Role</label>
               <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-white/5 border border-white/10 text-secondary">
                 <Shield size={12} /> {account.role === 'super_admin' ? 'Super Admin' : 'Member'}
               </div>
             </div>
+            {org && (
+              <div>
+                <label className="text-xs text-muted font-medium mb-1 block">Organization</label>
+                <div className="flex items-center gap-2 text-sm">
+                  <Building2 size={14} className="text-muted" />
+                  <span className="font-medium">{org.name}</span>
+                  {orgRole && <span className="badge bg-accent/15 text-accent text-[10px]">{orgRole}</span>}
+                </div>
+              </div>
+            )}
             <div>
               <label className="text-xs text-muted font-medium mb-1 block">Member Since</label>
               <div className="flex items-center gap-1.5 text-sm text-secondary">

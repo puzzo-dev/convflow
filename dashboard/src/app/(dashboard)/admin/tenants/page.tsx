@@ -1,14 +1,17 @@
 'use client';
+import { useState } from 'react';
 import useSWR from 'swr';
-import { Building2, Loader2 } from 'lucide-react';
+import { Building2, Loader2, Pencil } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { EditNameModal } from '../users/page';
 
 const fetcher = (url: string) => apiFetch(url);
 
 // A tenant is an Organization — a business that owns bots and has users by role.
 export default function AdminTenantsPage() {
-  const { data, isLoading } = useSWR('/platform/admin/organizations', fetcher);
+  const { data, isLoading, mutate } = useSWR('/platform/admin/organizations', fetcher);
   const orgs: any[] = data?.organizations ?? [];
+  const [editing, setEditing] = useState<any | null>(null);
 
   return (
     <>
@@ -22,7 +25,7 @@ export default function AdminTenantsPage() {
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr>
-                {['Organization', 'Slug', 'Users', 'Bots', 'Created'].map(h => (
+                {['Organization', 'Slug', 'Users', 'Bots', 'Created', ''].map(h => (
                   <th key={h} className="px-5 py-3.5 text-xs font-semibold text-muted uppercase tracking-wider bg-white/3 border-b border-white/10">{h}</th>
                 ))}
               </tr>

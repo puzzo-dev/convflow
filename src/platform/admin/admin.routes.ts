@@ -45,10 +45,37 @@ export default async function adminRoutes(app: FastifyInstance) {
     reply.send({ user: { id: user.id, email: user.email, role: user.role } });
   });
 
+  // PATCH /platform/admin/users/:id — edit name and/or active status
+  app.patch('/platform/admin/users/:id', { preHandler: [requireAuth, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as any;
+    const b = req.body as any;
+    const data: any = {};
+    if (b.name !== undefined) {
+      if (typeof b.name !== 'string' || !b.name.trim()) return reply.status(400).send({ error: 'name must be a non-empty string' });
+      if (b.name.length > 120) return reply.status(400).send({ error: 'name must be 120 characters or fewer' });
+      data.name = b.name.trim();
+    }
+    if (b.active !== undefined) data.active = !!b.active;
+    if (Object.keys(data).length === 0) return reply.status(400).send({ error: 'Nothing to update' });
+
+    const user = await prisma.user.update({ where: { id }, data });
+    reply.send({ user: { id: user.id, name: user.name, email: user.email, role: user.role, active: user.active } });
+  });
+
   // DELETE /platform/admin/users/:id — soft deactivate
   app.delete('/platform/admin/users/:id', { preHandler: [requireAuth, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as any;
     await prisma.user.update({ where: { id }, data: { active: false } });
     reply.status(204).send();
+  });
+
+  // PATCH /platform/admin/organizations/:id — rename any organization
+  app.patch('/platform/admin/organizations/:id', { preHandler: [requireAuth, requireAdmin] }, async (req, reply) => {
+    const { id }   = req.params as any;
+    const { name } = req.body as any;
+    if (typeof name !== 'string' || !name.trim()) return reply.status(400).send({ error: 'name is required' });
+    if (name.length > 120) return reply.status(400).send({ error: 'name must be 120 characters or fewer' });
+    const org = await prisma.organization.update({ where: { id }, data: { name: name.trim() } });
+    reply.send({ organization: { id: org.id, name: org.name, slug: org.slug } });
   });
 }
