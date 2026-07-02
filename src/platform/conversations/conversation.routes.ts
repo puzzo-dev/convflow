@@ -6,6 +6,12 @@ import { getState, setState } from '../../store/redis';
 import { sendMessage } from '../../channels/openwa.channel';
 import { CompanyConfig } from '../../types';
 
+const PHONE_RE = /^\d{7,15}$/;
+
+function normalizePhone(raw: string): string {
+  return (raw ?? '').replace(/\D/g, '');
+}
+
 export default async function conversationRoutes(app: FastifyInstance) {
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /platform/bots/:slug/conversations — recent phones + optional human-mode filter
@@ -66,7 +72,12 @@ export default async function conversationRoutes(app: FastifyInstance) {
   // and re-sends the last bot prompt to the customer
   // ─────────────────────────────────────────────────────────────────────────────
   app.post('/platform/bots/:slug/conversations/:phone/resume', { preHandler: [requireAuth, requireBotRole(['owner', 'admin'])] }, async (req, reply) => {
-    const { slug, phone } = req.params as any;
+    const { slug } = req.params as any;
+    const phone = normalizePhone((req.params as any).phone);
+
+    if (!PHONE_RE.test(phone)) {
+      return reply.status(400).send({ error: 'Invalid phone number' });
+    }
 
     // Mark takeover as resolved in DB
     const takeover = await prisma.humanTakeover.findFirst({

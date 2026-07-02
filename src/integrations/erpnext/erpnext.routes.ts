@@ -4,6 +4,7 @@ import { prisma } from '../../store/prisma';
 import { connectERPNext } from './erpnext.service';
 import { syncItemsFromERPNext } from './item-sync.service';
 import { requireAuth, requireBotAccess, requireBotRole } from '../../platform/auth/auth.middleware';
+import { validateExternalUrl } from '../../lib/validate-url';
 
 export default async function (app: FastifyInstance) {
   app.post('/platform/bots/:slug/erpnext/connect',
@@ -11,6 +12,11 @@ export default async function (app: FastifyInstance) {
     async (req, reply) => {
       const { slug }                          = req.params as any;
       const { erpnextUrl, apiKey, apiSecret } = req.body as any;
+
+      const urlCheck = validateExternalUrl(erpnextUrl);
+      if (!urlCheck.valid) {
+        return reply.status(400).send({ error: urlCheck.reason });
+      }
 
       const tenant = await prisma.tenant.findUnique({ where: { slug } });
       if (!tenant) return reply.status(404).send({ error: 'Bot not found' });
@@ -20,7 +26,7 @@ export default async function (app: FastifyInstance) {
           companySlug: slug,
           sessionId:   tenant.openwaSessionId,
           openwaApiKey: process.env.OPENWA_API_KEY!,
-          erpnextUrl,
+          erpnextUrl: urlCheck.origin,
           apiKey,
           apiSecret,
         });

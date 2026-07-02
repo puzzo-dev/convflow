@@ -152,10 +152,9 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href = url;
-      a.download = `${slug}-leads.csv`;
-      document.body.appendChild(a);
+      const safeSlug = slug.replace(/[^a-zA-Z0-9_-]/g, '_');
+      a.download = `${safeSlug}-leads.csv`;
       a.click();
-      a.remove();
       URL.revokeObjectURL(url);
     } finally {
       setExporting(false);

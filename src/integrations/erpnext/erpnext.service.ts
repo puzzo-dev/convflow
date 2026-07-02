@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import crypto from 'crypto';
+import { validateExternalUrl } from '../../lib/validate-url';
 import { AnswerMap, CreateOrderTerminal, ERPNextFieldMap } from '../../types';
 
 interface ConnectERPNextPayload {
@@ -13,11 +14,18 @@ interface ConnectERPNextPayload {
   apiSecret: string;
 }
 
+function assertErpnextUrl(url: string): string {
+  const result = validateExternalUrl(url);
+  if (!result.valid) throw new Error(result.reason);
+  return result.origin;
+}
+
 export async function connectERPNext(payload: ConnectERPNextPayload): Promise<void> {
   const { companySlug, sessionId, erpnextUrl, apiKey, apiSecret, openwaApiKey } = payload;
+  const baseURL = assertErpnextUrl(erpnextUrl);
   const authHeader = `token ${apiKey}:${apiSecret}`;
   const client = axios.create({
-    baseURL: erpnextUrl,
+    baseURL,
     headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
     timeout: 15_000,
   });
@@ -80,6 +88,7 @@ export async function pushLeadToERPNext(
   });
   if (!conn) return; // Not connected — skip silently
 
+  const baseURL = assertErpnextUrl(conn.erpnextUrl);
   const authHeader = `token ${conn.apiKey}:${conn.apiSecret}`;
 
   // Build human-readable notes from answers
@@ -102,7 +111,7 @@ export async function pushLeadToERPNext(
 
   try {
     await axios.post(
-      `${conn.erpnextUrl}/api/resource/Lead`,
+      `${baseURL}/api/resource/Lead`,
       leadPayload,
       {
         headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
@@ -140,10 +149,11 @@ export async function createSalesOrderInERPNext(
     return;
   }
 
+  const baseURL = assertErpnextUrl(conn.erpnextUrl);
   const authHeader = `token ${conn.apiKey}:${conn.apiSecret}`;
 
   // Resolve or create customer by phone
-  const customerName = await resolveOrCreateCustomer(conn.erpnextUrl, authHeader, phone, name);
+  const customerName = await resolveOrCreateCustomer(baseURL, authHeader, phone, name);
 
   // Build item line from answers
   const itemName = answers[terminal.itemAnswerKey] ?? 'Unknown Item';
@@ -181,7 +191,7 @@ export async function createSalesOrderInERPNext(
 
   try {
     const res = await axios.post(
-      `${conn.erpnextUrl}/api/resource/Sales Order`,
+      `${baseURL}/api/resource/Sales Order`,
       orderPayload,
       { headers: { Authorization: authHeader, 'Content-Type': 'application/json' }, timeout: 15_000 }
     );
@@ -202,7 +212,7 @@ export async function createSalesOrderInERPNext(
 }
 
 async function resolveOrCreateCustomer(
-  erpnextUrl: string,
+  baseURL: string,
   authHeader: string,
   phone: string,
   name: string | null
@@ -211,7 +221,7 @@ async function resolveOrCreateCustomer(
 
   // Try to find existing customer by phone
   try {
-    const res = await axios.get(`${erpnextUrl}/api/resource/Customer`, {
+    const res = await axios.get(`${baseURL}/api/resource/Customer`, {
       params: { filters: JSON.stringify([['mobile_no', '=', normalizedPhone]]), fields: '["name"]', limit: 1 },
       headers: { Authorization: authHeader },
       timeout: 10_000,
@@ -221,7 +231,7 @@ async function resolveOrCreateCustomer(
 
   // Create new customer
   const customerName = name ?? `WhatsApp ${normalizedPhone}`;
-  await axios.post(`${erpnextUrl}/api/resource/Customer`, {
+  await axios.post(`${baseURL}/api/resource/Customer`, {
     customer_name: customerName,
     customer_type: 'Individual',
     customer_group: 'Individual',
