@@ -58,7 +58,7 @@ export default function AccountPage() {
         <div className="glass-panel p-6 flex flex-col gap-6">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-accent/10 rounded-xl">
-              <User size={24} color="var(--accent-primary)" />
+              <User size={24} className="text-accent" />
             </div>
             <div>
               <h2 className="text-lg font-semibold">Profile Overview</h2>

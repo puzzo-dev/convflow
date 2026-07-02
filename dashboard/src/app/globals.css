@@ -30,9 +30,19 @@
 }
 
 @layer base {
+  /* Render native controls (select, option, inputs, scrollbars) in dark mode,
+     so their text is light instead of black. */
+  html {
+    color-scheme: dark;
+  }
   body {
     /* Flat matte — no radial-gradient glow. */
     @apply bg-base text-primary font-sans antialiased min-h-screen;
+  }
+  /* Belt-and-suspenders: force select/option text to the theme colors. */
+  select, option {
+    color: var(--color-primary);
+    background-color: var(--color-input);
   }
 }
 

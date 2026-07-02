@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import { apiFetch } from '@/lib/api';
-import { Database, Link2, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Database, Link2, Loader2, RefreshCw, AlertCircle, Plug, CheckCircle2 } from 'lucide-react';
 
 const fetcher = (url: string) => apiFetch(url);
 
@@ -85,7 +85,7 @@ export default function IntegrationsPage({ params }: { params: Promise<{ slug: s
       <div className="glass-panel p-8 max-w-2xl">
         <div className="flex items-center gap-4 mb-8">
           <div className="p-4 bg-accent/10 rounded-xl">
-            <Database size={32} color="var(--accent-primary)" />
+            <Database size={32} className="text-accent" />
           </div>
           <div>
             <h2 className="text-xl font-semibold">ERPNext</h2>
@@ -196,6 +196,93 @@ export default function IntegrationsPage({ params }: { params: Promise<{ slug: s
           </form>
         )}
       </div>
+
+      {/* Installed connector plugins that store their own per-tenant credentials */}
+      <StoredPlugins slug={slug} />
     </>
+  );
+}
+
+// Lists installed "stored" plugins and lets the tenant enter their credentials.
+function StoredPlugins({ slug }: { slug: string }) {
+  const { data } = useSWR('/platform/plugins', fetcher);
+  const stored = (data?.plugins ?? []).filter((p: any) => p.credentialSource === 'stored');
+  if (stored.length === 0) return null;
+
+  return (
+    <div className="mt-8">
+      <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Plug size={18} className="text-accent" /> Plugin Connectors</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {stored.map((p: any) => <StoredPluginCard key={p.id} slug={slug} plugin={p} />)}
+      </div>
+    </div>
+  );
+}
+
+function StoredPluginCard({ slug, plugin }: { slug: string; plugin: any }) {
+  const url = `/platform/bots/${slug}/plugins/${plugin.id}/credentials`;
+  const { data, mutate } = useSWR(url, fetcher);
+  const fields: any[] = data?.fields ?? plugin.credentialFields ?? [];
+  const configured = data?.configured === true;
+
+  const [creds, setCreds] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try {
+      await apiFetch(url, { method: 'POST', body: JSON.stringify({ credentials: creds }) });
+      setCreds({});
+      await mutate();
+    } catch (err: any) { setError(err.message ?? 'Failed to save'); }
+    finally { setSaving(false); }
+  };
+  const disconnect = async () => {
+    if (!confirm(`Disconnect ${plugin.name}?`)) return;
+    await apiFetch(url, { method: 'DELETE' });
+    await mutate();
+  };
+
+  return (
+    <div className="glass-panel p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-3 bg-accent/10 rounded-xl"><Plug size={22} className="text-accent" /></div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold">{plugin.name}</h3>
+          {plugin.description && <p className="text-xs text-secondary truncate">{plugin.description}</p>}
+        </div>
+        {configured && <span className="badge bg-success/15 text-success text-[10px] flex items-center gap-1"><CheckCircle2 size={11} /> Connected</span>}
+      </div>
+
+      {error && <div className="mb-4 px-4 py-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">{error}</div>}
+
+      {configured ? (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-secondary">Credentials are stored securely for this bot.</p>
+          <button onClick={disconnect} className="btn btn-danger text-xs px-3 py-1.5">Disconnect</button>
+        </div>
+      ) : (
+        <form onSubmit={save} className="flex flex-col gap-4">
+          {fields.map((f: any) => (
+            <div key={f.key}>
+              <label className="label">{f.label}{f.secret ? '' : ''}</label>
+              <input
+                type={f.secret ? 'password' : 'text'}
+                className="input"
+                value={creds[f.key] ?? ''}
+                onChange={e => setCreds(c => ({ ...c, [f.key]: e.target.value }))}
+                required
+              />
+            </div>
+          ))}
+          <button type="submit" className="btn btn-primary flex items-center gap-2" disabled={saving}>
+            {saving && <Loader2 size={16} className="animate-spin" />}
+            {saving ? 'Saving...' : `Connect ${plugin.name}`}
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
