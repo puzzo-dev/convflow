@@ -2,9 +2,10 @@
 import { URL } from 'url';
 import { lookup } from 'dns/promises';
 import { lookup as dnsLookup } from 'dns';
+import { isIP } from 'net';
 import http from 'http';
 import https from 'https';
-const BLOCKED_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
+const BLOCKED_HOSTNAMES = new Set(['localhost', '0.0.0.0']);
 function isPrivateIPv4(ip) {
     const parts = ip.split('.').map(Number);
     if (parts.length !== 4 || parts.some(p => Number.isNaN(p) || p < 0 || p > 255)) {
@@ -21,36 +22,64 @@ function isPrivateIPv4(ip) {
         a >= 240 // reserved/experimental
     );
 }
-function isPrivateIPv6(ip) {
+function expandIPv6(ip) {
     const clean = ip.split('%')[0].toLowerCase();
-    const parts = clean.split(':').filter(p => p !== '');
-    // ::1
-    if (parts.length === 1 && parts[0] === '1')
-        return true;
-    if (parts.length > 0) {
-        const first16 = parseInt(parts[0].padEnd(2, '0').substring(0, 2), 16);
-        if ((first16 & 0xfe) === 0xfc)
-            return true; // fc00::/7 unique local
-        if ((first16 & 0xffc0) === 0xfe80)
-            return true; // fe80::/10 link-local
+    if (clean.includes('::')) {
+        const [left, right] = clean.split('::');
+        const leftGroups = left ? left.split(':') : [];
+        const rightGroups = right ? right.split(':') : [];
+        const missing = 8 - leftGroups.length - rightGroups.length;
+        if (missing < 0)
+            return null;
+        return [...leftGroups, ...Array(missing).fill('0'), ...rightGroups];
     }
-    // IPv4-mapped IPv6 addresses
-    const match = clean.match(/[0:]?(?:ffff|FFFF):([0-9a-f.:]+)$/);
-    if (match) {
-        const last = match[1].split(':').pop();
-        if (last && last.includes('.'))
-            return isPrivateIPv4(last);
+    const groups = clean.split(':');
+    return groups.length === 8 ? groups : null;
+}
+function isPrivateIPv6(ip) {
+    const groups = expandIPv6(ip);
+    if (!groups)
+        return false;
+    const first = parseInt(groups[0], 16);
+    // fc00::/7 unique local
+    if ((first & 0xfe00) === 0xfc00)
+        return true;
+    // fe80::/10 link-local
+    if ((first & 0xffc0) === 0xfe80)
+        return true;
+    // ::1 loopback
+    if (groups.every((g, i) => (i === 7 ? parseInt(g, 16) === 1 : parseInt(g, 16) === 0))) {
+        return true;
+    }
+    // IPv4-mapped (::ffff:x.x.x.x) and IPv4-compatible (::x.x.x.x) addresses
+    if (groups.slice(0, 5).every(g => parseInt(g, 16) === 0) &&
+        (groups[5] === 'ffff' || groups[5] === '0')) {
+        const high = parseInt(groups[6], 16);
+        const low = parseInt(groups[7], 16);
+        const ipv4 = [
+            (high >> 8) & 0xff,
+            high & 0xff,
+            (low >> 8) & 0xff,
+            low & 0xff,
+        ].join('.');
+        return isPrivateIPv4(ipv4);
     }
     return false;
 }
 function isPrivateHost(host) {
-    const normalized = host.toLowerCase();
+    const normalized = host.toLowerCase().trim();
     if (BLOCKED_HOSTNAMES.has(normalized))
         return true;
-    if (normalized.startsWith('[') && normalized.endsWith(']')) {
-        return isPrivateIPv6(normalized.slice(1, -1));
-    }
-    return normalized.includes(':') ? isPrivateIPv6(normalized) : isPrivateIPv4(normalized);
+    // Strip brackets from IPv6 literals so net.isIP can classify them.
+    const ip = normalized.startsWith('[') && normalized.endsWith(']')
+        ? normalized.slice(1, -1)
+        : normalized;
+    const version = isIP(ip);
+    if (version === 4)
+        return isPrivateIPv4(ip);
+    if (version === 6)
+        return isPrivateIPv6(ip);
+    return false;
 }
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export function validateSlug(slug) {

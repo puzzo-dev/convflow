@@ -10,7 +10,7 @@ const connectBodySchema = {
   type: 'object',
   required: ['erpnextUrl', 'apiKey', 'apiSecret'],
   properties: {
-    erpnextUrl: { type: 'string', pattern: '^https?://', minLength: 8 },
+    erpnextUrl: { type: 'string', pattern: '^https?://[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9](:[0-9]+)?(/.*)?$', minLength: 8 },
     apiKey: { type: 'string', minLength: 1 },
     apiSecret: { type: 'string', minLength: 1 },
   },
