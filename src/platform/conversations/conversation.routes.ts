@@ -20,14 +20,14 @@ export default async function conversationRoutes(app: FastifyInstance) {
     const { slug } = req.params as any;
 
     const recentPhones = await prisma.conversation.findMany({
-      where:    { companySlug: slug },
+      where: { companySlug: slug },
       distinct: ['phone'],
-      orderBy:  { createdAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take: 50,
       select: { phone: true },
     });
 
-    reply.send({ phones: recentPhones.map(r => r.phone) });
+    reply.send({ phones: recentPhones.map((r: { phone: string }) => r.phone) });
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -38,23 +38,23 @@ export default async function conversationRoutes(app: FastifyInstance) {
 
     const [rawThread, activeTakeover] = await Promise.all([
       prisma.conversation.findMany({
-        where:   { companySlug: slug, phone },
+        where: { companySlug: slug, phone },
         orderBy: { createdAt: 'asc' },
         take: 200,
       }),
       prisma.humanTakeover.findFirst({
-        where:   { companySlug: slug, phone, resumedAt: null },
+        where: { companySlug: slug, phone, resumedAt: null },
         orderBy: { triggeredAt: 'desc' },
       }),
     ]);
 
     // Expose messageText as 'message' so the frontend API contract is consistent
-    const thread = rawThread.map(r => ({
-      id:        r.id,
-      phone:     r.phone,
+    const thread = rawThread.map((r: { id: string; phone: string; direction: string; messageText: string; stageId: string | null; createdAt: Date }) => ({
+      id: r.id,
+      phone: r.phone,
       direction: r.direction,
-      message:   r.messageText,
-      stageId:   r.stageId,
+      message: r.messageText,
+      stageId: r.stageId,
       createdAt: r.createdAt,
     }));
 
@@ -62,7 +62,7 @@ export default async function conversationRoutes(app: FastifyInstance) {
       phone,
       thread,
       humanMode: !!activeTakeover,
-      takeover:  activeTakeover ?? null,
+      takeover: activeTakeover ?? null,
     });
   });
 
@@ -81,7 +81,7 @@ export default async function conversationRoutes(app: FastifyInstance) {
 
     // Mark takeover as resolved in DB
     const takeover = await prisma.humanTakeover.findFirst({
-      where:   { companySlug: slug, phone, resumedAt: null },
+      where: { companySlug: slug, phone, resumedAt: null },
       orderBy: { triggeredAt: 'desc' },
     });
 

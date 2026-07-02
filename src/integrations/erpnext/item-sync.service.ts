@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import { redis } from '../../store/redis';
-import { validateExternalUrlAsync } from '../../lib/validate-url';
+import { validateExternalUrlAsync, safeHttpAgent, safeHttpsAgent } from '../../lib/validate-url';
 import { ERPNextItem } from '../../types';
 
 const ITEM_CACHE_TTL = 60 * 30; // 30 minutes
@@ -36,6 +36,9 @@ export async function syncItemsFromERPNext(companySlug: string): Promise<number>
     },
     headers: { Authorization: authHeader },
     timeout: 15_000,
+    maxRedirects: 0,
+    httpAgent: safeHttpAgent,
+    httpsAgent: safeHttpsAgent,
   });
 
   const items: ERPNextItem[] = res.data.data ?? [];

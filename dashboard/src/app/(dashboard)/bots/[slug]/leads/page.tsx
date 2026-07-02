@@ -9,6 +9,7 @@ import {
   flexRender,
   createColumnHelper,
   type SortingState,
+  type CellContext,
 } from '@tanstack/react-table';
 import { Download, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -30,21 +31,21 @@ const fetcher = (url: string) => apiFetch(url);
 const PAGE_SIZE = 50;
 
 const classificationColors: Record<string, string> = {
-  hot:     'bg-danger/20 text-danger',
-  warm:    'bg-warning/20 text-warning',
+  hot: 'bg-danger/20 text-danger',
+  warm: 'bg-warning/20 text-warning',
   nurture: 'bg-accent/20 text-accent',
-  cold:    'bg-white/10 text-muted',
-  order:   'bg-success/20 text-success',
+  cold: 'bg-white/10 text-muted',
+  order: 'bg-success/20 text-success',
 };
 
 const columnHelper = createColumnHelper<Lead>();
 
 export default function LeadsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = React.use(params);
-  const [search, setSearch]     = useState('');
-  const [filter, setFilter]     = useState('');
-  const [sorting, setSorting]   = useState<SortingState>([]);
-  const [page, setPage]         = useState(1);          // 1-based, server page
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('');
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [page, setPage] = useState(1);          // 1-based, server page
   const [exporting, setExporting] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
@@ -56,7 +57,7 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
     { refreshInterval: 30_000 },
   );
 
-  const leads: Lead[]        = data?.leads ?? [];
+  const leads: Lead[] = data?.leads ?? [];
   const pagination: Pagination = data?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 };
 
   const onFilterChange = (v: string) => { setFilter(v); setPage(1); };
@@ -64,21 +65,21 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
   const columns = useMemo(() => [
     columnHelper.accessor('name', {
       header: 'Name',
-      cell: info => <span className="font-medium">{info.getValue() ?? '—'}</span>,
+      cell: (info: CellContext<Lead, string | null>) => <span className="font-medium">{info.getValue() ?? '—'}</span>,
     }),
     columnHelper.accessor('phone', {
       header: 'Phone',
-      cell: info => <span className="text-secondary">+{info.getValue()}</span>,
+      cell: (info: CellContext<Lead, string>) => <span className="text-secondary">+{info.getValue()}</span>,
     }),
     columnHelper.accessor('classification', {
       header: 'Classification',
-      cell: info => (
+      cell: (info: CellContext<Lead, string>) => (
         <span className={`badge ${classificationColors[info.getValue()] ?? ''}`}>{info.getValue()}</span>
       ),
     }),
     columnHelper.accessor('leadScore', {
       header: 'Score',
-      cell: info => (
+      cell: (info: CellContext<Lead, number>) => (
         <div className="flex items-center gap-2">
           <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
             <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min((info.getValue() / 12) * 100, 100)}%` }} />
@@ -89,11 +90,11 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
     }),
     columnHelper.accessor('source', {
       header: 'Source',
-      cell: info => <span className="text-secondary text-xs">{info.getValue() ?? 'direct'}</span>,
+      cell: (info: CellContext<Lead, string>) => <span className="text-secondary text-xs">{info.getValue() ?? 'direct'}</span>,
     }),
     columnHelper.accessor('createdAt', {
       header: 'Date',
-      cell: info => (
+      cell: (info: CellContext<Lead, string>) => (
         <span className="text-secondary text-xs">
           {new Date(info.getValue()).toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: '2-digit' })}
         </span>
@@ -125,8 +126,8 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel:     getCoreRowModel(),
-    getSortedRowModel:   getSortedRowModel(),
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
   });
 
@@ -146,14 +147,18 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
         classification: l.classification, date: l.createdAt, ...l.answers,
       }));
       const headers = Array.from(new Set(rows.flatMap(r => Object.keys(r))));
-      const escape  = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const csv = [headers.join(','), ...rows.map(r => headers.map(h => escape((r as any)[h])).join(','))].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
       a.href = url;
-      const safeSlug = slug.replace(/[^a-zA-Z0-9_-]/g, '_');
-      a.download = `${safeSlug}-leads.csv`;
+      const safeSlug = slug
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_{2,}/g, '_')
+        .replace(/^_|_$/g, '')
+        .slice(0, 50);
+      a.download = `${safeSlug || 'bot'}-leads.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -215,7 +220,7 @@ export default function LeadsPage({ params }: { params: Promise<{ slug: string }
                     >
                       <div className="flex items-center gap-1.5">
                         {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getIsSorted() === 'asc'  && <ChevronUp   size={12} />}
+                        {header.column.getIsSorted() === 'asc' && <ChevronUp size={12} />}
                         {header.column.getIsSorted() === 'desc' && <ChevronDown size={12} />}
                       </div>
                     </th>

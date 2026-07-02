@@ -53,13 +53,14 @@ export default async function analyticsRoutes(app: FastifyInstance) {
       ORDER BY day ASC
     `;
 
-    const dailyMap: Record<string, { date: string; inbound: number; outbound: number }> = {};
+    const dailyMap = new Map<string, { date: string; inbound: number; outbound: number }>();
     for (const row of dailyRaw) {
-      if (!dailyMap[row.day]) dailyMap[row.day] = { date: row.day, inbound: 0, outbound: 0 };
-      if (row.direction === 'inbound') dailyMap[row.day].inbound += Number(row.cnt);
-      else dailyMap[row.day].outbound += Number(row.cnt);
+      const entry = dailyMap.get(row.day) ?? { date: row.day, inbound: 0, outbound: 0 };
+      if (row.direction === 'inbound') entry.inbound += Number(row.cnt);
+      else entry.outbound += Number(row.cnt);
+      dailyMap.set(row.day, entry);
     }
-    const dailyVolume = Object.values(dailyMap);
+    const dailyVolume = Array.from(dailyMap.values());
 
     // Top sources
     const sourcesRaw = await prisma.lead.groupBy({
@@ -69,7 +70,7 @@ export default async function analyticsRoutes(app: FastifyInstance) {
       orderBy: { _count: { source: 'desc' } },
       take: 10,
     });
-    const topSources = sourcesRaw.map(r => ({ source: r.source ?? 'direct', count: r._count.source }));
+    const topSources = sourcesRaw.map((r: { source: string | null; _count: { source: number } }) => ({ source: r.source ?? 'direct', count: r._count.source }));
 
     reply.send({
       stats: {

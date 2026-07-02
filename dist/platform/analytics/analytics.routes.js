@@ -36,16 +36,16 @@ export default async function analyticsRoutes(app) {
       GROUP BY day, direction
       ORDER BY day ASC
     `;
-        const dailyMap = {};
+        const dailyMap = new Map();
         for (const row of dailyRaw) {
-            if (!dailyMap[row.day])
-                dailyMap[row.day] = { date: row.day, inbound: 0, outbound: 0 };
+            const entry = dailyMap.get(row.day) ?? { date: row.day, inbound: 0, outbound: 0 };
             if (row.direction === 'inbound')
-                dailyMap[row.day].inbound += Number(row.cnt);
+                entry.inbound += Number(row.cnt);
             else
-                dailyMap[row.day].outbound += Number(row.cnt);
+                entry.outbound += Number(row.cnt);
+            dailyMap.set(row.day, entry);
         }
-        const dailyVolume = Object.values(dailyMap);
+        const dailyVolume = Array.from(dailyMap.values());
         // Top sources
         const sourcesRaw = await prisma.lead.groupBy({
             by: ['source'],

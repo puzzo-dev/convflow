@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { prisma } from '../../store/prisma';
 import crypto from 'crypto';
-import { validateExternalUrlAsync } from '../../lib/validate-url';
+import { validateExternalUrlAsync, safeHttpAgent, safeHttpsAgent } from '../../lib/validate-url';
 import { AnswerMap, CreateOrderTerminal, ERPNextFieldMap } from '../../types';
 
 interface ConnectERPNextPayload {
@@ -28,6 +28,9 @@ export async function connectERPNext(payload: ConnectERPNextPayload): Promise<vo
     baseURL,
     headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
     timeout: 15_000,
+    maxRedirects: 0, // Prevent SSRF via redirect to internal endpoints
+    httpAgent: safeHttpAgent,
+    httpsAgent: safeHttpsAgent,
   });
 
   // Step 1: Verify credentials
@@ -58,8 +61,8 @@ export async function connectERPNext(payload: ConnectERPNextPayload): Promise<vo
   // Step 4: Save connection to DB via Prisma (safe upsert — no raw SQL)
   await prisma.erpnextConnection.upsert({
     where:  { companySlug },
-    update: { erpnextUrl, apiKey, apiSecret, status: 'connected', errorMessage: null, connectedAt: new Date() },
-    create: { companySlug, erpnextUrl, apiKey, apiSecret, status: 'connected' },
+    update: { erpnextUrl: baseURL, apiKey, apiSecret, status: 'connected', errorMessage: null, connectedAt: new Date() },
+    create: { companySlug, erpnextUrl: baseURL, apiKey, apiSecret, status: 'connected' },
   });
 
   // Store proxy secret in tenant config
@@ -116,6 +119,9 @@ export async function pushLeadToERPNext(
       {
         headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
         timeout: 10_000,
+        maxRedirects: 0,
+        httpAgent: safeHttpAgent,
+        httpsAgent: safeHttpsAgent,
       }
     );
 
@@ -193,7 +199,13 @@ export async function createSalesOrderInERPNext(
     const res = await axios.post(
       `${baseURL}/api/resource/Sales Order`,
       orderPayload,
-      { headers: { Authorization: authHeader, 'Content-Type': 'application/json' }, timeout: 15_000 }
+      {
+        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+        timeout: 15_000,
+        maxRedirects: 0,
+        httpAgent: safeHttpAgent,
+        httpsAgent: safeHttpsAgent,
+      }
     );
 
     await prisma.erpnextConnection.update({
@@ -225,6 +237,9 @@ async function resolveOrCreateCustomer(
       params: { filters: JSON.stringify([['mobile_no', '=', normalizedPhone]]), fields: '["name"]', limit: 1 },
       headers: { Authorization: authHeader },
       timeout: 10_000,
+      maxRedirects: 0,
+      httpAgent: safeHttpAgent,
+      httpsAgent: safeHttpsAgent,
     });
     if (res.data.data?.length) return res.data.data[0].name;
   } catch { /* not found — create */ }
@@ -240,6 +255,9 @@ async function resolveOrCreateCustomer(
   }, {
     headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
     timeout: 10_000,
+    maxRedirects: 0,
+    httpAgent: safeHttpAgent,
+    httpsAgent: safeHttpsAgent,
   });
 
   return customerName;
