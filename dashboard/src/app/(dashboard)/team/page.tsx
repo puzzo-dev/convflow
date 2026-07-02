@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Users, Loader2, UserPlus, Trash2, X, AlertCircle } from 'lucide-react';
+import { Users, Loader2, UserPlus, Trash2, X, AlertCircle, Pencil } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { EditNameModal } from '../admin/users/page';
 
 const fetcher = (url: string) => apiFetch(url);
 
@@ -19,8 +20,9 @@ const ROLE_BADGE: Record<string, string> = {
 };
 
 export default function TeamPage() {
-  const { data: orgData }        = useSWR('/platform/org', fetcher);
+  const { data: orgData, mutate: mutateOrg } = useSWR('/platform/org', fetcher);
   const { data, isLoading, mutate } = useSWR('/platform/org/members', fetcher);
+  const [renaming, setRenaming] = useState(false);
 
   const members: Member[] = data?.members ?? [];
   const myRole: string    = data?.role ?? orgData?.role ?? 'viewer';
@@ -46,7 +48,12 @@ export default function TeamPage() {
     <>
       <div className="flex justify-between items-end mb-8">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3"><Users size={28} className="text-accent" /> Team</h1>
+          <h1 className="text-3xl font-bold flex items-center gap-3">
+            <Users size={28} className="text-accent" /> Team
+            {canManage && orgData?.org && (
+              <button onClick={() => setRenaming(true)} className="text-muted hover:text-primary" title="Rename organization"><Pencil size={16} /></button>
+            )}
+          </h1>
           <p className="text-secondary mt-2">
             {orgData?.org?.name ? `Members of ${orgData.org.name}.` : 'Members of your organization.'} Roles apply across all the org’s bots.
           </p>
@@ -114,6 +121,20 @@ export default function TeamPage() {
           assignable={assignable}
           onClose={() => setShowInvite(false)}
           onDone={async () => { setShowInvite(false); await mutate(); }}
+        />
+      )}
+
+      {renaming && orgData?.org && (
+        <EditNameModal
+          title="Rename Organization"
+          label="Organization name"
+          initial={orgData.org.name}
+          onClose={() => setRenaming(false)}
+          onSave={async (name) => {
+            await apiFetch('/platform/org', { method: 'PATCH', body: JSON.stringify({ name }) });
+            await mutateOrg();
+            setRenaming(false);
+          }}
         />
       )}
     </>

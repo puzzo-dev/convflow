@@ -165,7 +165,7 @@ function AddChannelForm({ providersByKind, providerFields, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
-      <div className="glass-panel w-full max-w-md p-8 relative max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="glass-panel w-full max-w-xl p-8 relative max-h-[90vh] overflow-y-auto no-scrollbar" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 text-muted hover:text-primary"><X size={18} /></button>
         <h2 className="text-xl font-bold mb-1">Add Notification Channel</h2>
         <p className="text-secondary text-sm mb-6">Credentials are encrypted at rest and never shown again.</p>
@@ -201,19 +201,22 @@ function AddChannelForm({ providersByKind, providerFields, onClose, onSaved }: {
               placeholder={kind === 'email' ? 'alerts@yourco.com' : '2348012345678'} required />
           </div>
 
-          {fields.map(f => (
-            <div key={f.key}>
-              <label className="label">{f.label}{f.optional ? ' (optional)' : ''}</label>
-              <input
-                className="input"
-                type={f.secret ? 'password' : 'text'}
-                value={creds[f.key] ?? ''}
-                onChange={e => setCreds(c => ({ ...c, [f.key]: e.target.value }))}
-                placeholder={f.placeholder}
-                required={!f.optional}
-              />
-            </div>
-          ))}
+          {/* Credential fields — two columns to fill the wider dialog. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {fields.map(f => (
+              <div key={f.key}>
+                <label className="label">{f.label}{f.optional ? ' (optional)' : ''}</label>
+                <input
+                  className="input"
+                  type={f.secret ? 'password' : 'text'}
+                  value={creds[f.key] ?? ''}
+                  onChange={e => setCreds(c => ({ ...c, [f.key]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  required={!f.optional}
+                />
+              </div>
+            ))}
+          </div>
 
           <div>
             <label className="label">Label (optional)</label>

@@ -70,4 +70,13 @@
   .badge {
     @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
   }
+
+  /* Scrollable but with no visible scrollbar. */
+  .no-scrollbar {
+    -ms-overflow-style: none;   /* IE / old Edge */
+    scrollbar-width: none;      /* Firefox */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;              /* Chrome / Safari / WebKit */
+  }
 }

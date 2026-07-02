@@ -88,7 +88,7 @@ function BotSwitcher({ bots, activeSlug }: { bots: BotSummary[]; activeSlug: str
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-1 right-1 mt-1 z-20 rounded-lg border border-white/10 bg-surface shadow-xl overflow-hidden max-h-72 overflow-y-auto">
+          <div className="absolute left-1 right-1 mt-1 z-20 rounded-lg border border-white/10 bg-surface shadow-xl overflow-hidden max-h-72 overflow-y-auto no-scrollbar">
             {bots.length === 0 && <div className="px-3 py-3 text-xs text-muted">No bots yet</div>}
             {bots.map(b => (
               <Link
@@ -239,7 +239,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-[260px] border-r border-white/[0.08] bg-surface flex flex-col sticky top-0 h-screen overflow-y-auto">
+      <aside className="w-[260px] border-r border-white/[0.08] bg-surface flex flex-col sticky top-0 h-screen overflow-y-auto no-scrollbar">
         {isAdmin
           ? <AdminShell  pathname={pathname} activeSlug={activeSlug} email={email} />
           : <TenantShell pathname={pathname} activeSlug={activeSlug} email={email} />}

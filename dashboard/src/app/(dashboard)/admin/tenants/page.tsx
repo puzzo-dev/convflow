@@ -32,9 +32,9 @@ export default function AdminTenantsPage() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={5} className="px-5 py-16 text-center text-muted"><Loader2 size={24} className="animate-spin mx-auto" /></td></tr>
+                <tr><td colSpan={6} className="px-5 py-16 text-center text-muted"><Loader2 size={24} className="animate-spin mx-auto" /></td></tr>
               ) : orgs.length === 0 ? (
-                <tr><td colSpan={5} className="px-5 py-16 text-center text-muted text-sm">No tenants yet.</td></tr>
+                <tr><td colSpan={6} className="px-5 py-16 text-center text-muted text-sm">No tenants yet.</td></tr>
               ) : orgs.map(o => (
                 <tr key={o.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
                   <td className="px-5 py-3.5 font-medium">{o.name}</td>
@@ -42,12 +42,29 @@ export default function AdminTenantsPage() {
                   <td className="px-5 py-3.5 text-secondary">{o._count?.memberships ?? 0}</td>
                   <td className="px-5 py-3.5 text-secondary">{o._count?.bots ?? 0}</td>
                   <td className="px-5 py-3.5 text-secondary text-xs">{new Date(o.createdAt).toLocaleDateString()}</td>
+                  <td className="px-5 py-3.5">
+                    <button onClick={() => setEditing(o)} className="text-secondary hover:text-primary" title="Rename"><Pencil size={15} /></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {editing && (
+        <EditNameModal
+          title="Rename Organization"
+          label="Organization name"
+          initial={editing.name}
+          onClose={() => setEditing(null)}
+          onSave={async (name) => {
+            await apiFetch(`/platform/admin/organizations/${editing.id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+            await mutate();
+            setEditing(null);
+          }}
+        />
+      )}
     </>
   );
 }
