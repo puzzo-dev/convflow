@@ -1,9 +1,23 @@
 # ConvFlow Self-Building System
 ## Complete Design: Onboarding Agent + Generators + Internal APIs + Meta App
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Design + Scaffold  
-**Depends on:** `docs/ONBOARDING_AGENT.md`, existing hybrid engine, Prisma schema
+**Depends on:** `docs/ONBOARDING_AGENT.md`, `docs/ARCHITECTURE_PRINCIPLES.md`, existing hybrid engine, Prisma schema
+
+---
+
+## 0. Architecture Principle (Read First)
+
+**Deterministic Flow Engine = Conversation Spine only.**  
+**n8n = Primary Integration & Side-Effects Layer.**
+
+The flow engine collects answers and manages conversation state.  
+It does **not** contain heavy integration code.  
+Almost every real action (quotes, orders, external systems, unique business logic) is executed by calling a tool that triggers an **n8n workflow**.  
+This is why n8n was chosen — it is already integration-ready. We do not rebuild those integrations from scratch inside ConvFlow.
+
+See `docs/ARCHITECTURE_PRINCIPLES.md` for the full clarification.
 
 ---
 
@@ -15,10 +29,10 @@ ConvFlow becomes a self-building multi-channel agent platform:
 2. Agent builds a live `BusinessProfile`.
 3. Owner connects channels & systems via guided OAuth / simple flows (including a **ConvFlow Meta App** so any user can connect their own Facebook Page, Instagram, WhatsApp Business, etc.).
 4. **Generators** automatically create:
-   - Deterministic flows
+   - Deterministic flows (conversation only)
    - LLM agent instructions + tools
    - RAG from website
-   - n8n workflows for unique logic
+   - **n8n workflows** for virtually all side-effects and unique logic
 5. Owner tests in sandbox → goes live.
 6. Same agent can later evolve the system.
 
@@ -39,7 +53,7 @@ ConvFlow will own **one Meta App** that other businesses use to connect their ow
 2. Redirected to Meta OAuth using **ConvFlow’s Meta App**.
 3. User selects the Page / IG account / WABA they want to grant to ConvFlow.
 4. ConvFlow receives the long-lived Page Access Token + IDs.
-5. Tokens are stored encrypted per tenant (`PluginCredential` or a new `ChannelConnection` table).
+5. Tokens are stored encrypted per tenant (`ChannelConnection` table).
 6. Webhooks for that Page/IG are subscribed to ConvFlow’s webhook endpoint.
 7. Incoming messages are normalized into `InboundEvent` and routed by `page_id` / `ig_id` → tenant.
 
@@ -112,11 +126,12 @@ POST   /api/internal/n8n/activate/:workflowId
 POST   /api/internal/n8n-callback            ← called by n8n workflows
 ```
 
-### 3.6 Runtime Tools (used by LLM Agent later)
+### 3.6 Runtime Tools (used by LLM Agent / Flow terminals)
 ```
 POST   /api/tools/execute
 Body: { tenantId, toolId, arguments, conversationContext }
 ```
+Most tools will simply trigger the corresponding n8n workflow.
 
 ---
 
@@ -125,105 +140,90 @@ Body: { tenantId, toolId, arguments, conversationContext }
 ### 4.1 RAG Builder
 - Input: `systems.website.url`
 - Crawl (respect robots.txt, limit depth/pages)
-- Chunk → embed (OpenAI / local / whatever provider is configured)
-- Store in tenant-scoped vector collection (pgvector recommended first)
+- Chunk → embed → store in tenant-scoped vector collection (pgvector first)
 - Update `generated.ragSources`
 
 ### 4.2 Flow Generator
-- For each intent with `desiredAction` in [`create_order`, `save_lead`, `book_appointment`, simple FAQ]:
-  - Emit a deterministic `FlowStage[]` compatible with current `src/types`.
-- Prefer structured stages for high-volume paths; leave ambiguous intents to the LLM agent.
+- Emits **conversation-only** deterministic `FlowStage[]`.
+- Final stage is almost always a terminal that calls a tool (which points to n8n).
+- Do **not** put integration logic inside the generated stages.
 
 ### 4.3 Tool Generator
-- Create tool definitions for:
-  - ERPNext actions (reuse existing plugin)
-  - `create_quotation`, `create_order`, `escalate_to_human`
-  - Any `custom_n8n` intent → tool that points to the n8n workflow ID
-- Store in `BusinessProfile.generated.tools` and also persist in DB if needed.
+- Create tool definitions.
+- Default `implementation: "n8n"` for any action that touches external systems or unique logic.
+- Fast-path internal/ERPNext tools are allowed but should be the exception.
 
-### 4.4 n8n Workflow Generator (Critical)
+### 4.4 n8n Workflow Generator (Critical — Primary Integration Path)
 
-**Goal:** Business owner never opens n8n.
+**Goal:** Business owner never opens n8n. Almost all side-effects live here.
 
 Process:
-1. Detect intents or policies that need custom logic.
-2. Call n8n API to create a workflow from a **standard template**:
-   - Webhook trigger (ConvFlow → n8n)
+1. For every intent that needs action (and any complex policy) → create an n8n workflow via API.
+2. Standard template:
+   - Webhook trigger from ConvFlow (full conversation context + answers)
    - Optional approval / IF nodes
-   - HTTP nodes to ERPNext or other systems
-   - Final callback to `/api/internal/n8n-callback`
+   - HTTP / native n8n nodes for ERPNext, Shopify, email, etc.
+   - Callback to `/api/internal/n8n-callback`
 3. Activate the workflow.
-4. Store `n8nWorkflowId` on the corresponding tool.
-5. At runtime the LLM Agent or a deterministic terminal simply calls the tool; n8n does the unique work.
-
-Template variables the generator fills:
-- Tenant ID, intent name, approval rules, field mappings, callback URL, secrets.
+4. Store `n8nWorkflowId` on the tool definition.
+5. At runtime the flow terminal or LLM Agent just calls the tool → n8n runs.
 
 ### 4.5 Agent Instructions Generator
-- Produce a system prompt from `BusinessProfile` (tone, policies, available tools, escalation rules).
-- Store in `generated.agentInstructions`.
+- Produce system prompt + guardrails from `BusinessProfile`.
+- List available tools (most of which are n8n-backed).
 
 ---
 
 ## 5. Onboarding Agent Implementation Sketch
 
-Location (suggested):
 ```
 src/onboarding/
-  agent.ts              ← main conversational loop
-  profile.ts            ← BusinessProfile CRUD + validation
-  interview.ts          ← state machine / phase tracking
+  agent.ts
+  profile.ts
+  interview.ts
   generators/
     index.ts
     rag.ts
-    flows.ts
-    tools.ts
-    n8n.ts
+    flows.ts          ← conversation stages only
+    tools.ts          ← mostly n8n-backed tools
+    n8n.ts            ← the real integration generator
     agent-instructions.ts
   connections/
     meta.ts
     erpnext.ts
     website.ts
     openwa.ts
-  routes.ts             ← Fastify routes for /api/onboarding/*
+  routes.ts
 ```
-
-The agent itself can be:
-- An LLM with tool calling (the tools are the Internal APIs above), **or**
-- A lightweight state machine that calls the LLM only for NLU + reply generation while keeping the profile in code.
-
-Recommended: LLM + tools, because the interview is open-ended.
 
 ---
 
 ## 6. Prisma Additions Needed
 
-- `BusinessProfile` table (or store as JSON on Tenant + versioned)
+- `BusinessProfile` (or JSON on Tenant)
 - `ChannelConnection` (shown above)
-- Possibly `GeneratedArtifact` or just keep everything inside `BusinessProfile.generated` + Tenant.configJson for backward compatibility.
 
 ---
 
 ## 7. Security Notes
 
-- All Meta tokens and ERPNext secrets encrypted at rest (existing pattern).
-- Onboarding routes require authenticated user or a short-lived onboarding session token.
-- n8n callback endpoint must verify a shared secret or JWT.
-- Meta webhook must verify the `X-Hub-Signature-256`.
+- All Meta tokens and secrets encrypted at rest.
+- Onboarding routes require auth or short-lived onboarding token.
+- n8n callback verifies shared secret / JWT.
+- Meta webhook verifies `X-Hub-Signature-256`.
 
 ---
 
-## 8. Implementation Order (Recommended)
+## 8. Implementation Order
 
-1. Add `ChannelConnection` + Meta OAuth routes (so multi-tenant Meta works).
-2. Persist `BusinessProfile` (new table or JSON on Tenant).
-3. Implement Internal APIs listed in section 3.
-4. Build the Onboarding Agent conversational loop + profile updater.
-5. Implement generators one by one (start with website RAG + simple flow generator).
-6. n8n workflow generator + callback.
-7. Wire sandbox test chat + go-live.
-8. Polish dashboard so owner can re-open the Onboarding Agent later to evolve the bot.
+1. `ChannelConnection` + Meta OAuth routes
+2. Persist `BusinessProfile`
+3. Internal APIs
+4. Onboarding Agent loop
+5. Generators (RAG → flows → tools → n8n → agent instructions)
+6. Sandbox + go-live
+7. Re-openable Onboarding Agent for evolution
 
 ---
 
-*This document is the master plan. Update it whenever the self-building architecture changes.*
+*Master plan. Keep in sync with ARCHITECTURE_PRINCIPLES.md.*
