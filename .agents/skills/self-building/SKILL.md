@@ -1,23 +1,22 @@
 # Self-Building System Skill
 
-**Use this skill whenever working on the zero-tech onboarding experience, generators, Meta multi-tenant connections, or the Onboarding Agent.**
+**Use this skill whenever working on zero-tech onboarding, generators, Meta connections, or the Onboarding Agent.**
 
-## Canonical Documents (read in this order)
-1. `docs/ARCHITECTURE_PRINCIPLES.md` — **Deterministic flow = conversation spine, n8n = primary integrations/side-effects**
-2. `docs/DESIGN_CHAT_EXPORT.md` — Full design conversation context
-3. `docs/ONBOARDING_AGENT.md` — BusinessProfile + interview script + n8n rules
-4. `docs/SELF_BUILDING_SYSTEM.md` — Master plan (APIs, generators, Meta, order)
-5. `docs/META_APP.md` — Multi-tenant Meta App
+## Read in this order
+1. `docs/ARCHITECTURE_PRINCIPLES.md` — flow = spine, n8n = integrations; how n8n AI fits
+2. `docs/N8N_AI_WORKFLOW_BUILDING.md` — research: Assistant (UI) vs MCP (programmatic) vs REST
+3. `docs/DESIGN_CHAT_EXPORT.md` — full design chat context
+4. `docs/ONBOARDING_AGENT.md` — BusinessProfile + interview + n8n rules
+5. `docs/SELF_BUILDING_SYSTEM.md` — master plan
+6. `docs/META_APP.md` — multi-tenant Meta App
 
-## Key Code
-- `src/onboarding/types.ts`
-- `src/onboarding/generators/` (n8n generator is the integration path)
-
-## Core Invariants
+## Core invariants
 - Business owner never writes code, edits JSON, or opens n8n.
-- Deterministic flow engine only manages conversation state and calls tools.
-- Almost all side-effects and external integrations are executed by n8n workflows.
-- ConvFlow owns one Meta App; tenants connect their own Pages/IG accounts through it.
+- Deterministic flow only manages conversation state and calls tools.
+- Almost all side-effects run in n8n workflows.
+- Workflow creation: REST skeleton for contract + optional MCP enrichment from a natural-language brief; n8n Assistant for human/admin refinement only.
+- ConvFlow owns one Meta App; tenants connect their own Pages/IG through it.
 
-## When to Update
-Update the docs and this skill together whenever the hybrid architecture or self-building flow changes.
+## Code
+- `src/onboarding/types.ts`
+- `src/onboarding/generators/` (especially `n8n.ts`)
